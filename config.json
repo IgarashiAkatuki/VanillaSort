@@ -1,0 +1,51 @@
+{
+  "baseline": "mask_r4 best_AP update500 + high-recall D1 + HuiduRep internal denoise + VanillaCluster CD_TRIM25",
+  "sampling_frequency_hz": 30000.0,
+  "detector_checkpoint": "checkpoints/detector_mask_r4_best_ap.pt",
+  "huidurep_checkpoint": "checkpoints/HuiduRep.pt",
+  "detector_architecture": {
+    "num_channels": 4, "d_model": 256, "nhead": 4, "num_layers": 6,
+    "dim_ff": 1024, "dropout": 0.1, "frontend_channels": 64,
+    "local_window": 256, "causal": false, "prior_prob": 0.01,
+    "use_positional_encoding": true, "positional_encoding_type": "rotary",
+    "frontend_type": "standard", "qk_normalization": "l2"
+  },
+  "huidurep_architecture": {
+    "T": 0.2, "mask_ratio": 0.0, "use_embedding": true, "n_heads": 4,
+    "m": 0.99, "use_avg_pool": true, "K": 4096, "embedding_dim": 64,
+    "ff_dim": 128, "num_layers": 4, "dropout": 0.1, "moco_v3": true
+  },
+  "profiles": {
+    "d1": {
+      "filter": {"low": 300.0, "high": 5000.0, "order": 5, "notch": true},
+      "waveform_global_mad": false,
+      "base_threshold": 0.039, "direct_keep": 0.045
+    },
+    "canonical": {
+      "filter": {"low": 200.0, "high": 6000.0, "order": 3, "notch": false},
+      "waveform_global_mad": true,
+      "base_threshold": 0.038, "direct_keep": 0.041
+    }
+  },
+  "default_profile": "d1",
+  "chunk_len": 2500,
+  "candidate_floor": 0.0,
+  "peak_radius": 3,
+  "refractory_samples": 12,
+  "event_snr_radius": 12,
+  "primary_snr": 3.0,
+  "secondary_snr": 2.0,
+  "min_secondary_channels": 1,
+  "gmm": {"covariance_type": "full", "n_init": 1, "max_iter": 100, "tol": 0.001, "reg_covar": 0.000001},
+  "residual": {
+    "before": 30, "after": 30, "max_shift": 2, "amplitude_min": 0.5,
+    "amplitude_max": 2.0, "core_posterior": 0.9, "min_core_events": 30,
+    "max_template_events": 512, "fold_block_seconds": 1.0,
+    "top_components": 3, "residual_weight": 2.0, "max_log_evidence": 4.0,
+    "batch_size": 512
+  },
+  "template_low_fraction": 0.25,
+  "template_tie_seed": 20260912,
+  "historical_seeds": {"start": 30, "stop_exclusive": 60},
+  "latest_frozen_hybrid_components": {"11": 22, "12": 22, "21": 24, "22": 24, "31": 24, "32": 24}
+}

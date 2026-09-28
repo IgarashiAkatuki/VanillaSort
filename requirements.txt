@@ -1,0 +1,8 @@
+# Tested versions from the working ibl environment. Install torch separately;
+# see README.md for the CPU and the tested CUDA 12.8 wheel commands.
+numpy==1.26.4
+scipy==1.15.2
+scikit-learn==1.6.1
+joblib==1.5.0
+threadpoolctl==3.6.0
+psutil==5.9.0
