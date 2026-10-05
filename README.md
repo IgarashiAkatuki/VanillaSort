@@ -8,7 +8,34 @@ This repository provides inference code and pretrained checkpoints for **four-ch
 
 **Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
 
-[Installation](#installation) · [Quick start](#quick-start) · [Your data](#sort-your-data) · [Outputs](#outputs) · [Configuration](#configuration) · [Method](#method)
+[Results](#results) · [Installation](#installation) · [Quick start](#quick-start) · [Your data](#sort-your-data) · [Outputs](#outputs) · [Configuration](#configuration) · [Method](#method)
+
+## Results
+
+The [paper's Tables 1–2](https://www.biorxiv.org/content/10.64898/2026.09.18.752552) report results on **Hybrid Janelia Static and Drift**, with nine recordings per subset and ground-truth units with SNR ≥ 3. Sorting accuracy is `TP / (TP + FP + FN)`, with event matching within ±6 samples. Values below are **mean ± SEM**; higher is better.
+
+| Spike sorter | Static accuracy | Drift accuracy |
+| --- | ---: | ---: |
+| HerdingSpikes2 | 0.35 ± 0.01 | 0.29 ± 0.01 |
+| IronClust | 0.57 ± 0.04 | 0.54 ± 0.03 |
+| JRClust | 0.47 ± 0.04 | 0.35 ± 0.03 |
+| KiloSort | 0.60 ± 0.02 | 0.51 ± 0.02 |
+| KiloSort2 | 0.39 ± 0.03 | 0.30 ± 0.02 |
+| KiloSort4 | 0.40 ± 0.03 | 0.34 ± 0.02 |
+| MountainSort4 | 0.59 ± 0.02 | 0.36 ± 0.02 |
+| MountainSort5 | 0.40 ± 0.06 | 0.33 ± 0.04 |
+| SpykingCircus | 0.57 ± 0.01 | 0.48 ± 0.02 |
+| Tridesclous | 0.54 ± 0.03 | 0.37 ± 0.02 |
+| SimSort | 0.62 ± 0.04 | 0.56 ± 0.03 |
+| HuiduRep (without DAE) | 0.69 ± 0.02 | 0.56 ± 0.02 |
+| HuiduRep (with DAE) | 0.70 ± 0.02 | 0.60 ± 0.02 |
+| **VanillaSort (without DAE)** | **0.73 ± 0.02** | 0.61 ± 0.02 |
+| **VanillaSort (with DAE)** | **0.73 ± 0.01** | **0.64 ± 0.02** |
+
+DAE denotes a denoising autoencoder. Other-tool scores are the SpikeForest or original-publication results used in the paper.
+
+- **Detection:** VanillaDet achieves 0.74/0.71 accuracy on Static/Drift, compared with SimSort's 0.72/0.68 and amplitude thresholding's 0.61/0.60.
+- **Sorting:** VanillaSort improves accuracy over the corresponding HuiduRep baselines by **3–4 percentage points on Static** and **4–5 points on Drift** (paired Wilcoxon test, *p* < 0.05).
 
 ## Installation
 
