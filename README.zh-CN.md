@@ -61,15 +61,49 @@ Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。
 | Linux / Windows，NVIDIA GPU，CUDA 12.8 示例 | `python -m pip install --upgrade "torch>=2.7.0" --index-url https://download.pytorch.org/whl/cu128` |
 | macOS，Apple 芯片，CPU | `python -m pip install --upgrade "torch>=2.7.0"` |
 
-安装与当前环境兼容的最新版数值计算依赖：
+安装 package（运行依赖由 `pyproject.toml` 声明）：
 
 ```bash
-python -m pip install --upgrade numpy scipy scikit-learn joblib threadpoolctl psutil
+python -m pip install -e .
 ```
 
 [`requirements.txt`](requirements.txt) 记录了原始环境的数值计算依赖版本，便于复现。每次运行实际使用的版本会写入 `run.json`。
 
-两个模型的权重已包含在 [`checkpoints/`](checkpoints/) 中。以下示例均在仓库根目录运行。
+两个模型的权重已包含在 [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/) 中。以下示例均在仓库根目录运行。
+
+## Python / SpikeInterface API
+
+```python
+import vanillasort
+from spikeinterface.core import BaseSorting, load
+
+sorting = vanillasort.sort(recording)
+assert isinstance(sorting, BaseSorting)
+
+sorting = vanillasort.sort(
+    recording, output_folder="output/recording", model="default",
+    device="auto", seed=0, components=22, verbose=True,
+)
+restored = load("output/recording/sorting")
+```
+
+`recording` 为附带二维通道坐标（微米）的 `BaseRecording`，采样率为 30 kHz（容差 1 Hz），每个 segment 至少 100 samples。有 gain/offset 元数据时会换算到微伏，否则各通道 traces 必须使用共同电压尺度。程序内部执行滤波。可用参数还包括 `model_path`、`profile="d1"` / `"canonical"`、`detector_batch=8`、`embedding_batch=128`。
+
+`components=22` 是历史预设，不会自动估计神经元数量，请按记录设置。非空邻域事件数小于 K 时明确报错，完全无事件时返回空 sorting。API 默认 seed 为 0，历史 CLI 默认仍为 30。`main_channel_id` 根据已分配事件的通道峰峰值中位数确定，保留 recording 的原始通道 ID。
+
+四通道组保留原始通道顺序和算法。较大 probe 按真实坐标寻找四个最近邻通道，遵守 group/shank 边界；检测事件按最强 SNR 通道归属邻域，相交邻域再按分数和 12 samples 半径去重。HuiduRep 的重复/裁剪到 11 通道机制不变。检测器没有缺失通道 mask，因此少于四通道的 group/shank 和三维 probe 会被拒绝。
+
+**较大 probe 适配仍属实验性功能**：跨邻域漂移可能拆分单元，相近同时事件可能被去重抑制；尚未实现跨邻域合并或漂移校正。多个 segment 独立聚类，保留各自采样时钟并使用不同 unit IDs，不自动匹配跨 segment 单元。
+
+traces 每次最多读取 300,000 samples 的四通道 block，检测与 embedding 分批执行。为保持算法，全 segment 的滤波和 median/MAD 仍需要相应主存，运行前检查内存；事件波形/特征存储也随时长增长，并非全流程 out-of-core。
+
+`output_folder=None` 不写文件。指定新建/空目录后：`sorting/` 可由 SpikeInterface 重新加载；`events.npz` 包含对齐的 `sample_index`、`unit_id`、`segment_index`；`segmentN_patchM.npz` 包含邻域详细结果；`run.json` 保存参数、坐标和模型哈希。保存的 sorting 不包含原始 recording，必要时可重新 `register_recording(recording)`。下文 CLI 输出格式保持原样。
+
+默认模型版本为 `hybrid-janelia-2026.09`，来源为原仓库已发布权重，约 36 MiB，随 package 安装并校验 SHA-256。普通 import 和基础测试不下载模型。可选 `VANILLASORT_MODEL_CACHE` 使用其版本子目录中的同名权重并校验哈希，缺失文件回退到 package 内置权重。
+
+本地模型支持 `model_path="/path/to/model.pt"`：文件包含 `detector_state_dict`、`huidurep_state_dict` 和可选 `config`；也可指定包含 `config.json` 及两个 checkpoint 的目录。配置中的 checkpoint 路径相对该目录。兼容原始 state dict、`state_dict` / `model_state_dict` 包装和 `module.` 前缀。详细格式见 [英文说明](README.md#model-checkpoints)。
+
+核心实现唯一位于 `src/vanillasort`，训练代码可使用 `from vanillasort.models import VanillaDet, HuiduRep`。当前 checkout 没有训练驱动脚本或数据集，已有模型训练方法保留。开发安装 `pip install -e ".[dev]"`，运行 `pytest`。`requirements.txt` 仅保留历史环境参考版本，不作为 package 安装命令。`vanillasort` 和 `python -m vanillasort` 可在仓库外使用，`run.py` 为兼容入口。
 
 ## 快速开始
 
@@ -201,7 +235,7 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 遇到 CUDA 显存不足时，程序会将对应推理批次的大小减半并重试。滤波和归一化在主机内存中处理整段选定记录。运行前会检查可用内存是否达到约 `12 × 输入数组字节数 + 512 MiB`；波形和特征所需内存还会随事件数增长。
 
-预处理与模型设置见 [`config.json`](config.json)：
+预处理与模型设置见 [`configs/default.json`](src/vanillasort/configs/default.json)：
 
 | 设置 | `d1`（默认） | `canonical` |
 | --- | --- | --- |
@@ -225,12 +259,14 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 | 路径 | 作用 |
 | --- | --- |
-| [`run.py`](run.py) | 命令行入口、输入加载、预处理、推理、聚类与导出。 |
-| [`detector_model.py`](detector_model.py) | VanillaDet 的卷积前端、注意力层与预测头。 |
-| [`huidurep/`](huidurep/) | HuiduRep 编码器、解码器、投影模块及 `CMAES` 模型类。 |
-| [`frozen_ops.py`](frozen_ops.py) | 事件筛选、波形预处理、振幅特征和模板修正所需的数值运算。 |
-| [`config.json`](config.json) | 模型结构、预处理配置、阈值及聚类设置。 |
-| [`checkpoints/`](checkpoints/) | `detector_mask_r4_best_ap.pt` 和 `HuiduRep.pt`。 |
+| [`src/vanillasort/`](src/vanillasort/) | 唯一核心实现：API、pipeline、models、geometry、checkpoint 和数值运算。 |
+| [`run.py`](run.py) | 转发到 package CLI 的兼容入口。 |
+| [`pyproject.toml`](pyproject.toml) / [`tests/`](tests/) | 安装配置和小型合成测试。 |
+| [`models/detector.py`](src/vanillasort/models/detector.py) | VanillaDet 的卷积前端、注意力层与预测头。 |
+| [`models/huidurep/`](src/vanillasort/models/huidurep/) | HuiduRep 编码器、解码器、投影模块及 `CMAES` 模型类。 |
+| [`ops.py`](src/vanillasort/ops.py) | 事件筛选、波形预处理、振幅特征和模板修正所需的数值运算。 |
+| [`configs/default.json`](src/vanillasort/configs/default.json) | 模型结构、预处理配置、阈值及聚类设置。 |
+| [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/) | `detector_mask_r4_best_ap.pt` 和 `HuiduRep.pt`。 |
 | [`requirements.txt`](requirements.txt) | 用于复现原始环境的数值计算依赖参考版本。 |
 
 ## 引用

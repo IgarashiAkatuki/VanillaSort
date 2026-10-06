@@ -4,7 +4,7 @@
 
 VanillaSort is a spike-sorting pipeline for extracellular recordings. It combines **VanillaDet** spike detection, **HuiduRep** waveform representations, and **VanillaCluster** clustering to produce spike times and putative neuronal-unit assignments.
 
-This repository provides inference code and pretrained checkpoints for **four-channel recordings sampled at 30 kHz**.
+This installable Python package provides a SpikeInterface API, a command-line runner, and pretrained checkpoints for **four-channel recordings sampled at 30 kHz**. Larger 2D probes use an experimental nearest-four-neighbor adapter.
 
 **Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
 
@@ -61,15 +61,77 @@ For GPU execution, select **Stable** and the newest compatible CUDA version **12
 | Linux / Windows, NVIDIA GPU, CUDA 12.8 example | `python -m pip install --upgrade "torch>=2.7.0" --index-url https://download.pytorch.org/whl/cu128` |
 | macOS, Apple silicon, CPU | `python -m pip install --upgrade "torch>=2.7.0"` |
 
-Install the latest numerical dependencies compatible with your environment:
+Install the package (runtime dependencies are declared in `pyproject.toml`):
 
 ```bash
-python -m pip install --upgrade numpy scipy scikit-learn joblib threadpoolctl psutil
+python -m pip install -e .
 ```
 
-[`requirements.txt`](requirements.txt) records the numerical dependency versions from the original environment for reproducibility. Each run records its installed versions in `run.json`.
+[`requirements.txt`](requirements.txt) records historical numerical versions for comparison; it is not the package installation command. Each run records its installed versions in `run.json`. For development, use `pip install -e ".[dev]"` and `pytest`. The model classes already include their training operations, so no separate training dependencies are required.
 
-Both model checkpoints are included in [`checkpoints/`](checkpoints/). Run the examples below from the repository root.
+Both model checkpoints (about 36 MiB total) are included in the installed package under [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/). No model is downloaded at import or during tests. The `vanillasort` command and `python -m vanillasort` work outside the repository; `python run.py` remains a compatibility entry point.
+
+## Python / SpikeInterface API
+
+```python
+import vanillasort
+from spikeinterface.core import BaseSorting, load
+
+# recording is an existing BaseRecording with probe/channel locations.
+sorting = vanillasort.sort(recording)
+assert isinstance(sorting, BaseSorting)
+print(vanillasort.__version__)
+
+sorting = vanillasort.sort(
+    recording,
+    output_folder="output/recording",
+    model="default",
+    device="auto",  # CUDA when available, otherwise CPU
+    seed=0,
+    components=22,  # choose K for your data; there is no automatic K estimation
+    verbose=True,
+)
+restored = load("output/recording/sorting")
+```
+
+The API accepts raw recordings at 30,000 Hz (tolerance 1 Hz), at least 100 samples per segment, and finite 2D locations in micrometres. Stored channel gains/offsets are applied when available; otherwise traces must already share a voltage scale. Filtering is internal. Unit spike trains contain zero-based sample indices, with the original segment index. `main_channel_id` uses the original recording channel IDs and the largest median peak-to-peak amplitude across assigned events.
+
+The remaining options are `model_path=None`, `profile="d1"` (or `"canonical"`), `detector_batch=8` and `embedding_batch=128`. `components=22` is a historical preset, **not an estimate of the number of neurons**. A nonempty neighborhood with fewer than K events raises an error; empty detections produce an empty sorting. The API seed defaults to 0; the historical CLI retains seed 30.
+
+With `output_folder=None`, no files are written. Otherwise use a new/empty folder: `sorting/` is reloadable with SpikeInterface, `events.npz` contains aligned `sample_index`, `unit_id`, and `segment_index`, `segmentN_patchM.npz` contains detailed local pipeline arrays, and `run.json` records parameters, geometry, model hashes and diagnostics. The registered recording stays in memory and is not copied into `sorting/`; call `restored.register_recording(recording)` if needed. The CLI output format described below is preserved.
+
+### Geometry and recording length
+
+Exactly four channels in a group retain their original order and published inference behavior. Larger groups use the four nearest real contacts around each channel, preserve recording order within each unique neighborhood, and assign detections to the neighborhood owning their strongest SNR channel. Score-priority suppression within 12 samples removes duplicates across intersecting neighborhoods. Channel groups and probe/shank boundaries are respected. The existing waveform repetition/cropping to 11 HuiduRep channels is unchanged.
+
+VanillaDet has **no missing-channel mask**. Groups/shanks with fewer than four contacts and 3D probes are rejected. The larger-probe adapter is experimental: units can split when their strongest channel moves between neighborhoods; overlapping neighborhoods can suppress nearby simultaneous events. It does not implement drift correction or cross-neighborhood unit merging. Segments are clustered independently with distinct unit IDs; no cross-segment unit matching is assumed.
+
+Traces are read in blocks of at most 300,000 samples for one four-channel neighborhood at a time. Detection retains the original 2,500-sample chunks and global refractory suppression; embeddings are batched. Exact whole-segment filtering and median/MAD normalization still require RAM proportional to the segment duration, with a preflight memory check. Waveforms/features also grow with event count. This is not an out-of-core sorter. CUDA OOM handling halves inference batches, as in the original runner.
+
+### Model checkpoints
+
+`model="default"` resolves `hybrid-janelia-2026.09`, the original [published repository weights](https://github.com/IgarashiAkatuki/VanillaSort/tree/00a9ef06e88a955406ad2902d7bc56617f0afd2e), with SHA-256 validation. Architecture, version, source and resolution are centralized in [`checkpoints.py`](src/vanillasort/checkpoints.py) and [`configs/default.json`](src/vanillasort/configs/default.json). The installed weights are the default local model store. An optional `VANILLASORT_MODEL_CACHE` directory may hold copies at `$VANILLASORT_MODEL_CACHE/hybrid-janelia-2026.09/{detector_mask_r4_best_ap.pt,HuiduRep.pt}`; matching files are reused after checksum verification. Missing cache files fall back to packaged weights. No cache directory or network access is required.
+
+```python
+sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components=22)
+```
+
+A combined `.pt` must contain `detector_state_dict` and `huidurep_state_dict`; optional `config` overrides the default configuration. Alternatively, `model_path` can name a directory with `config.json` and both checkpoint files. That JSON specifies `detector_checkpoint` and `huidurep_checkpoint`, relative to the directory. Individual checkpoint files accept raw state dicts, `state_dict` or `model_state_dict` containers, and `module.` prefixes. Loading uses `weights_only=True` and strict state-dict matching.
+
+The canonical model classes are shared by training and inference:
+
+```python
+import torch
+from vanillasort.models import VanillaDet, HuiduRep
+
+# Use architectures matching your training configuration.
+# Save a compatible combined checkpoint from trained model instances:
+# torch.save({"detector_state_dict": detector.state_dict(),
+#             "huidurep_state_dict": encoder.state_dict(),
+#             "config": config}, "model.pt")
+```
+
+This checkout contains the published inference bundle and model training methods, but no training driver or training dataset. Paper profiles, K settings, seed controls and numerical reference versions remain documented below; package installation does not add a training recipe.
 
 ## Quick start
 
@@ -201,7 +263,7 @@ Common command-line options:
 
 CUDA out-of-memory handling halves the affected inference batch and retries. Filtering and normalization use the entire selected recording in host memory. Before processing, the runner checks for approximately `12 × input array bytes + 512 MiB` of available RAM; waveform and feature storage also grows with the event count.
 
-The profiles and model settings are defined in [`config.json`](config.json):
+The profiles and model settings are defined in [`configs/default.json`](src/vanillasort/configs/default.json):
 
 | Setting | `d1` (default) | `canonical` |
 | --- | --- | --- |
@@ -225,13 +287,16 @@ Template refinement splits events into alternating one-second blocks. For each t
 
 | Path | Role |
 | --- | --- |
-| [`run.py`](run.py) | CLI, input loading, preprocessing, inference, clustering, and export. |
-| [`detector_model.py`](detector_model.py) | VanillaDet convolutional frontends, attention layers, and prediction head. |
-| [`huidurep/`](huidurep/) | HuiduRep encoder, decoders, projection modules, and the `CMAES` model class. |
-| [`frozen_ops.py`](frozen_ops.py) | Numerical operations for event selection, waveform preparation, amplitude features, and template refinement. |
-| [`config.json`](config.json) | Model architectures, profiles, thresholds, and clustering settings. |
-| [`checkpoints/`](checkpoints/) | `detector_mask_r4_best_ap.pt` and `HuiduRep.pt`. |
-| [`requirements.txt`](requirements.txt) | Reference versions of the numerical dependencies for reproducing the original environment. |
+| [`pyproject.toml`](pyproject.toml) | Package metadata, runtime and development dependencies, CLI. |
+| [`src/vanillasort/api.py`](src/vanillasort/api.py) | Public `sort()` API, recording access and BaseSorting output. |
+| [`src/vanillasort/models/`](src/vanillasort/models/) | Canonical VanillaDet and HuiduRep models, including training methods. |
+| [`src/vanillasort/pipeline.py`](src/vanillasort/pipeline.py) / [`ops.py`](src/vanillasort/ops.py) | Published preprocessing, detection, embeddings, amplitude features, GMM and template refinement. |
+| [`src/vanillasort/geometry.py`](src/vanillasort/geometry.py) | Local probe neighborhoods and overlap suppression. |
+| [`src/vanillasort/checkpoints.py`](src/vanillasort/checkpoints.py) | Model resolution and strict checkpoint loading. |
+| [`src/vanillasort/configs/`](src/vanillasort/configs/) / [`checkpoints/`](src/vanillasort/checkpoints/) | Inference configuration and original pretrained weights. |
+| [`src/vanillasort/cli.py`](src/vanillasort/cli.py) / [`run.py`](run.py) | CLI and compatibility launcher. |
+| [`tests/`](tests/) | Small synthetic tests using locally generated tiny checkpoints. |
+| [`requirements.txt`](requirements.txt) | Historical numerical versions for reproduction comparisons. |
 
 ## Citation
 
