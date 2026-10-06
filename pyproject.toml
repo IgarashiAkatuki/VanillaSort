@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vanillasort"
+version = "0.1.0"
+description = "VanillaDet, HuiduRep and VanillaCluster for extracellular spike sorting"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "Zishuo Feng"}, {name = "Feng Cao"}]
+dependencies = [
+    "numpy>=1.26", "scipy>=1.10", "scikit-learn>=1.3",
+    "torch>=2.7", "threadpoolctl>=3", "psutil>=5.9", "spikeinterface>=0.103",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "black", "ruff", "build"]
+
+[project.scripts]
+vanillasort = "vanillasort.cli:main"
+
+[project.urls]
+Repository = "https://github.com/IgarashiAkatuki/VanillaSort"
+Paper = "https://doi.org/10.64898/2026.09.18.752552"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vanillasort = ["configs/*.json", "checkpoints/*.pt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+# Preserve the published model/numerical code, including training paths.
+[tool.ruff.lint.per-file-ignores]
+"src/vanillasort/models/**/*.py" = ["F401", "F841"]
+"src/vanillasort/ops.py" = ["F401", "F841"]
