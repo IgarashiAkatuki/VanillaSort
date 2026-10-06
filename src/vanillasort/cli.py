@@ -12,7 +12,7 @@ import numpy as np
 import psutil
 import torch
 
-from .checkpoints import load_config, file_hash, verify_bundle
+from .checkpoints import resolve_model, file_hash, verify_bundle
 from .pipeline import run_pipeline
 
 
@@ -69,8 +69,9 @@ def main():
         "--gpu-fraction", type=float, default=0.4, help="CUDA allocator upper limit; OOM halves a batch"
     )
     parser.add_argument("--detect-only", action="store_true")
-    parser.add_argument("--self-test", action="store_true", help="Run synthetic 2s end-to-end, K=4; no download")
-    parser.add_argument("--verify-only", action="store_true", help="Verify bundled code/config/weights SHA256")
+    parser.add_argument("--self-test", action="store_true", help="Run synthetic 2s end-to-end, K=4")
+    parser.add_argument("--model-path", type=Path, help="Local combined checkpoint or model directory (offline)")
+    parser.add_argument("--verify-only", action="store_true", help="Download/cache and verify default model SHA256")
     parser.add_argument("--output", type=Path, default=Path("output"))
     args = parser.parse_args()
     if args.verify_only:
@@ -97,7 +98,7 @@ def main():
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
     # Preserve the historical FP32 execution; no new AMP/TF32 policy is introduced.
-    config = load_config()
+    config, model_info = resolve_model(model_path=args.model_path)
     started = time.perf_counter()
     raw, coords, fs = synthetic_example() if args.self_test else read_input(args.input, args.coords, args.fs)
     if args.seconds is not None:
@@ -128,6 +129,7 @@ def main():
         device=str(device),
         synthetic_smoke_test=args.self_test,
         config=config,
+        model=model_info,
         input_path=str(args.input.resolve()) if args.input else None,
         versions={
             n: importlib.metadata.version(n)

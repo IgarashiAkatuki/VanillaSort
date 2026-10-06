@@ -1,0 +1,2 @@
+prune model_upload
+global-exclude *.pt

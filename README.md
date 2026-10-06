@@ -69,7 +69,7 @@ python -m pip install -e .
 
 [`requirements.txt`](requirements.txt) records historical numerical versions for comparison; it is not the package installation command. Each run records its installed versions in `run.json`. For development, use `pip install -e ".[dev]"` and `pytest`. The model classes already include their training operations, so no separate training dependencies are required.
 
-Both model checkpoints (about 36 MiB total) are included in the installed package under [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/). No model is downloaded at import or during tests. The `vanillasort` command and `python -m vanillasort` work outside the repository; `python run.py` remains a compatibility entry point.
+The model checkpoints (about 36 MiB total) are hosted at [Kohaku2580/VanillaSort on Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort). They are downloaded on the first model load and cached locally. The wheel and source distribution contain no `.pt` files; ordinary import and the automated tests do not download weights. The `vanillasort` command and `python -m vanillasort` work outside the repository; `python run.py` remains a compatibility entry point.
 
 ## Python / SpikeInterface API
 
@@ -110,7 +110,9 @@ Traces are read in blocks of at most 300,000 samples for one four-channel neighb
 
 ### Model checkpoints
 
-`model="default"` resolves `hybrid-janelia-2026.09`, the original [published repository weights](https://github.com/IgarashiAkatuki/VanillaSort/tree/00a9ef06e88a955406ad2902d7bc56617f0afd2e), with SHA-256 validation. Architecture, version, source and resolution are centralized in [`checkpoints.py`](src/vanillasort/checkpoints.py) and [`configs/default.json`](src/vanillasort/configs/default.json). The installed weights are the default local model store. An optional `VANILLASORT_MODEL_CACHE` directory may hold copies at `$VANILLASORT_MODEL_CACHE/hybrid-janelia-2026.09/{detector_mask_r4_best_ap.pt,HuiduRep.pt}`; matching files are reused after checksum verification. Missing cache files fall back to packaged weights. No cache directory or network access is required.
+`model="default"` resolves `hybrid-janelia-2026.09` from [Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort/tree/dbaa0cf5d14a737d494af0fafff402f62453c6ee), pinned to commit `dbaa0cf5d14a737d494af0fafff402f62453c6ee`. Both weights are byte-identical to the [original repository checkpoints](https://github.com/IgarashiAkatuki/VanillaSort/tree/00a9ef06e88a955406ad2902d7bc56617f0afd2e). The repository ID, revision, filenames and SHA-256 hashes are centralized in [`configs/default_model.json`](src/vanillasort/configs/default_model.json); architecture and inference settings live in [`configs/default.json`](src/vanillasort/configs/default.json).
+
+The first `sort()` or CLI inference downloads the weights using `huggingface_hub`; every load verifies the hashes. Subsequent loads check the pinned local snapshot first and need no network request. The standard Hugging Face cache is used by default (`HF_HOME` / `HF_HUB_CACHE` are supported), or set `VANILLASORT_MODEL_CACHE` to an alternate **Hub cache root**. `HF_HUB_OFFLINE=1` supports offline use after the cache has been populated. An empty offline cache raises a clear error; supplying `model_path` is another fully offline option. Public default weights require no token. `python -m vanillasort --verify-only` populates/checks the default cache; the two-second CLI self-test also downloads weights if needed.
 
 ```python
 sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components=22)
@@ -252,6 +254,7 @@ Common command-line options:
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `--components K` | Required for sorting your data | Number of GMM components. |
+| `--model-path PATH` | Hugging Face default model | Use a local checkpoint bundle or directory. |
 | `--profile d1` | `d1` | Select `d1` or `canonical` preprocessing. |
 | `--seed 30` | `30` | Random seed for the run and its single GMM initialization. |
 | `--device auto` | `auto` | Select `auto`, `cpu`, `cuda`, or a device such as `cuda:0`. |
@@ -277,7 +280,7 @@ Both profiles use per-channel median/MAD normalization for detector input. Event
 
 ## Method
 
-1. **VanillaDet — detect spikes.** A convolutional frontend and a six-layer local Transformer produce sample-level scores. The bundled model uses 256-dimensional hidden states, four attention heads, rotary positional encoding, and L2-normalized queries and keys. Peak selection applies a 12-sample exclusion radius. Events at or above the direct-acceptance threshold are retained; events between the two thresholds require a primary-channel SNR of at least 3 and an SNR of at least 2 on another channel.
+1. **VanillaDet — detect spikes.** A convolutional frontend and a six-layer local Transformer produce sample-level scores. The default model uses 256-dimensional hidden states, four attention heads, rotary positional encoding, and L2-normalized queries and keys. Peak selection applies a 12-sample exclusion radius. Events at or above the direct-acceptance threshold are retained; events between the two thresholds require a primary-channel SNR of at least 3 and an SNR of at least 2 on another channel.
 2. **HuiduRep — encode waveforms.** Each event contributes a 60-sample, four-channel waveform. Preprocessing standardizes each channel over events and time, interpolates to 90 samples, and repeats/crops channels to 11 inputs. HuiduRep applies internal denoising and produces a 32-dimensional representation, which is standardized across the recording's events.
 3. **VanillaCluster — assign units.** Three relative-amplitude features are formed from per-channel peak-to-peak amplitude fractions, projected onto a Helmert contrast basis, and standardized. A full-covariance GMM clusters the resulting 35-dimensional vectors. One template-residual refinement pass then updates assignments among the top three candidate components.
 
@@ -293,7 +296,7 @@ Template refinement splits events into alternating one-second blocks. For each t
 | [`src/vanillasort/pipeline.py`](src/vanillasort/pipeline.py) / [`ops.py`](src/vanillasort/ops.py) | Published preprocessing, detection, embeddings, amplitude features, GMM and template refinement. |
 | [`src/vanillasort/geometry.py`](src/vanillasort/geometry.py) | Local probe neighborhoods and overlap suppression. |
 | [`src/vanillasort/checkpoints.py`](src/vanillasort/checkpoints.py) | Model resolution and strict checkpoint loading. |
-| [`src/vanillasort/configs/`](src/vanillasort/configs/) / [`checkpoints/`](src/vanillasort/checkpoints/) | Inference configuration and original pretrained weights. |
+| [`src/vanillasort/configs/`](src/vanillasort/configs/) | Inference settings and pinned Hugging Face model registry; weights are cached separately. |
 | [`src/vanillasort/cli.py`](src/vanillasort/cli.py) / [`run.py`](run.py) | CLI and compatibility launcher. |
 | [`tests/`](tests/) | Small synthetic tests using locally generated tiny checkpoints. |
 | [`requirements.txt`](requirements.txt) | Historical numerical versions for reproduction comparisons. |

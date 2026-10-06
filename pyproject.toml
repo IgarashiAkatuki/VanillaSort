@@ -14,6 +14,7 @@ authors = [{name = "Zishuo Feng"}, {name = "Feng Cao"}]
 dependencies = [
     "numpy>=1.26", "scipy>=1.10", "scikit-learn>=1.3",
     "torch>=2.7", "threadpoolctl>=3", "psutil>=5.9", "spikeinterface>=0.103",
+    "huggingface-hub>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ where = ["src"]
 namespaces = false
 
 [tool.setuptools.package-data]
-vanillasort = ["configs/*.json", "checkpoints/*.pt"]
+vanillasort = ["configs/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

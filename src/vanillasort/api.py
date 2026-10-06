@@ -35,7 +35,8 @@ def sort(
         New/empty folder for sorting/, events.npz, per-patch results and run.json.
         If omitted, the returned sorting is held in memory; no files are written.
     model : str, default "default"
-        Bundled Hybrid Janelia model. There are no automatic model downloads.
+        Hybrid Janelia model, downloaded from a pinned Hugging Face revision on
+        first use and cached locally. Ordinary package import does not download.
     device : str, default "auto"
         "cpu", "cuda", "cuda:N", or "auto" (CUDA if available, otherwise CPU).
     seed : int, default 0

@@ -69,7 +69,7 @@ python -m pip install -e .
 
 [`requirements.txt`](requirements.txt) 记录了原始环境的数值计算依赖版本，便于复现。每次运行实际使用的版本会写入 `run.json`。
 
-两个模型的权重已包含在 [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/) 中。以下示例均在仓库根目录运行。
+模型权重托管于 [Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort)，首次加载模型推理时下载，之后复用本地缓存。wheel 和源码包均不含 `.pt` 文件；普通 import 与自动化测试不下载权重。以下 CLI 示例均在仓库根目录运行。
 
 ## Python / SpikeInterface API
 
@@ -99,7 +99,7 @@ traces 每次最多读取 300,000 samples 的四通道 block，检测与 embeddi
 
 `output_folder=None` 不写文件。指定新建/空目录后：`sorting/` 可由 SpikeInterface 重新加载；`events.npz` 包含对齐的 `sample_index`、`unit_id`、`segment_index`；`segmentN_patchM.npz` 包含邻域详细结果；`run.json` 保存参数、坐标和模型哈希。保存的 sorting 不包含原始 recording，必要时可重新 `register_recording(recording)`。下文 CLI 输出格式保持原样。
 
-默认模型版本为 `hybrid-janelia-2026.09`，来源为原仓库已发布权重，约 36 MiB，随 package 安装并校验 SHA-256。普通 import 和基础测试不下载模型。可选 `VANILLASORT_MODEL_CACHE` 使用其版本子目录中的同名权重并校验哈希，缺失文件回退到 package 内置权重。
+默认模型 `hybrid-janelia-2026.09` 托管于 [Kohaku2580/VanillaSort](https://huggingface.co/Kohaku2580/VanillaSort)，固定 commit `dbaa0cf5d14a737d494af0fafff402f62453c6ee`，总计约 36 MiB，与原始权重逐字节一致。仓库 ID、revision、文件名和 SHA-256 集中在 `configs/default_model.json`。首次推理下载，后续先读取固定 revision 的本地缓存并校验哈希，无需网络请求。默认使用 Hugging Face 标准缓存（支持 `HF_HOME` / `HF_HUB_CACHE`），也可设置 `VANILLASORT_MODEL_CACHE` 为缓存根目录。缓存准备好后可用 `HF_HUB_OFFLINE=1` 离线运行；空缓存会明确报错，也可通过 `model_path` 完全离线加载。公开模型不需要 token。`python -m vanillasort --verify-only` 可提前下载并校验默认权重；CLI self-test 在缓存缺失时也会下载。
 
 本地模型支持 `model_path="/path/to/model.pt"`：文件包含 `detector_state_dict`、`huidurep_state_dict` 和可选 `config`；也可指定包含 `config.json` 及两个 checkpoint 的目录。配置中的 checkpoint 路径相对该目录。兼容原始 state dict、`state_dict` / `model_state_dict` 包装和 `module.` 前缀。详细格式见 [英文说明](README.md#model-checkpoints)。
 
@@ -266,7 +266,7 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 | [`models/huidurep/`](src/vanillasort/models/huidurep/) | HuiduRep 编码器、解码器、投影模块及 `CMAES` 模型类。 |
 | [`ops.py`](src/vanillasort/ops.py) | 事件筛选、波形预处理、振幅特征和模板修正所需的数值运算。 |
 | [`configs/default.json`](src/vanillasort/configs/default.json) | 模型结构、预处理配置、阈值及聚类设置。 |
-| [`src/vanillasort/checkpoints/`](src/vanillasort/checkpoints/) | `detector_mask_r4_best_ap.pt` 和 `HuiduRep.pt`。 |
+| [`configs/default_model.json`](src/vanillasort/configs/default_model.json) | Hugging Face 模型仓库、固定 revision 和校验哈希；权重单独缓存。 |
 | [`requirements.txt`](requirements.txt) | 用于复现原始环境的数值计算依赖参考版本。 |
 
 ## 引用

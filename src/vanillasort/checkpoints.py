@@ -1,4 +1,4 @@
-"""Versioned, local checkpoint resolution. Importing this module never downloads weights."""
+"""Pinned Hugging Face models and local checkpoints, with lazy download and SHA-256 checks."""
 
 from __future__ import annotations
 
@@ -8,12 +8,9 @@ import os
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent
-MODEL_VERSION = "hybrid-janelia-2026.09"
-MODEL_SOURCE = "https://github.com/IgarashiAkatuki/VanillaSort/tree/00a9ef06e88a955406ad2902d7bc56617f0afd2e"
-CHECKPOINT_HASHES = {
-    "detector_checkpoint": "c112499b0077d3613ef5b791f61130eacb75d090bea4f6fa9d59aabc0c2aa1a6",
-    "huidurep_checkpoint": "048203dbb326e159f4320bc4a7204c93a9951477b8c9995a75728bb87378da68",
-}
+MODEL = json.loads((PACKAGE / "configs/default_model.json").read_text(encoding="utf-8"))
+MODEL_VERSION = MODEL["version"]
+CHECKPOINT_HASHES = {key: item["sha256"] for key, item in MODEL["files"].items()}
 
 
 def file_hash(path):
@@ -25,36 +22,63 @@ def file_hash(path):
 
 
 def load_config():
-    config = json.loads((PACKAGE / "configs/default.json").read_text(encoding="utf-8"))
-    for key in CHECKPOINT_HASHES:
-        config[key] = str(PACKAGE / config[key])
-    return config
+    """Read inference settings without loading or downloading any model."""
+    return json.loads((PACKAGE / "configs/default.json").read_text(encoding="utf-8"))
+
+
+def _default_checkpoint(filename):
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    revision = MODEL["revision"]
+    if not isinstance(revision, str) or len(revision) != 40:
+        raise RuntimeError("The default Hugging Face model release is not pinned; use model_path for local weights")
+    cache = os.environ.get("VANILLASORT_MODEL_CACHE")
+    options = dict(
+        repo_id=MODEL["repo_id"],
+        filename=filename,
+        revision=revision,
+        cache_dir=str(Path(cache).expanduser()) if cache else None,
+        token=False,
+        library_name="vanillasort",
+    )
+    try:
+        # An immutable cached snapshot needs no metadata request or network.
+        return hf_hub_download(**options, local_files_only=True)
+    except LocalEntryNotFoundError:
+        try:
+            return hf_hub_download(**options)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Cannot download {filename} from {MODEL['repo_id']} at {revision}. "
+                "Connect once to populate the Hugging Face cache, or supply model_path for offline use."
+            ) from exc
 
 
 def resolve_model(model="default", model_path=None):
-    """Resolve bundled weights, a local directory, or a combined training checkpoint.
+    """Resolve Hugging Face weights, a local directory, or a combined training checkpoint.
 
     A combined .pt contains ``detector_state_dict``, ``huidurep_state_dict``
     and optionally ``config`` (architecture/settings overrides). A directory
     contains config.json plus the two checkpoint paths given in that config.
-    No files are downloaded. An optional VANILLASORT_MODEL_CACHE directory can
-    hold an exact copy of the bundled files under MODEL_VERSION/.
+    Default weights download only on cache misses, from a pinned Hub commit.
+    VANILLASORT_MODEL_CACHE overrides the standard Hugging Face cache directory.
+    Local checkpoints never use the network.
     """
     if model != "default":
         raise ValueError(f"Unknown model {model!r}; use 'default' and optionally model_path")
     config = load_config()
     if model_path is None:
-        cache = os.environ.get("VANILLASORT_MODEL_CACHE")
-        if cache:
-            directory = Path(cache).expanduser() / MODEL_VERSION
-            for key in CHECKPOINT_HASHES:
-                cached = directory / Path(config[key]).name
-                if cached.is_file():
-                    config[key] = str(cached)
         for key, expected in CHECKPOINT_HASHES.items():
+            config[key] = _default_checkpoint(MODEL["files"][key]["filename"])
             if file_hash(config[key]) != expected:
                 raise ValueError(f"Default checkpoint checksum mismatch: {config[key]}")
-        metadata = {"version": MODEL_VERSION, "source": MODEL_SOURCE}
+        metadata = {
+            "version": MODEL_VERSION,
+            "source": f"https://huggingface.co/{MODEL['repo_id']}",
+            "repo_id": MODEL["repo_id"],
+            "revision": MODEL["revision"],
+        }
     else:
         path = Path(model_path).expanduser().resolve()
         if path.is_dir():
@@ -91,11 +115,7 @@ def resolve_model(model="default", model_path=None):
 
 
 def verify_bundle():
-    config = load_config()
-    for key, expected in CHECKPOINT_HASHES.items():
-        path = Path(config[key])
-        if not path.is_file() or file_hash(path) != expected:
-            raise ValueError(f"Bundled checkpoint changed or missing: {path}")
+    resolve_model()
     return {"verified_files": len(CHECKPOINT_HASHES), "algorithm": "sha256", "model_version": MODEL_VERSION}
 
 

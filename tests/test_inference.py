@@ -17,7 +17,7 @@ def test_import():
         [
             sys.executable,
             "-c",
-            "import sys, vanillasort; assert vanillasort.__version__; assert callable(vanillasort.sort); assert 'torch' not in sys.modules",
+            "import sys, vanillasort; assert vanillasort.__version__; assert callable(vanillasort.sort); assert 'torch' not in sys.modules; assert 'huggingface_hub' not in sys.modules",
         ],
         check=True,
     )
@@ -127,3 +127,51 @@ def test_checkpoint_directory_and_training(tiny_model, tmp_path):
     assert detector.head.mlp[-1].weight.grad is not None
     for key, value in bundle["huidurep_state_dict"].items():
         torch.testing.assert_close(encoder.state_dict()[key], value)
+
+
+def test_hub_cache_and_integrity(monkeypatch, tmp_path):
+    import hashlib
+    import huggingface_hub
+    from huggingface_hub.errors import LocalEntryNotFoundError
+    from vanillasort import checkpoints
+
+    # Exercise the real resolver without network access or pretrained weights.
+    payload = b"tiny checkpoint cache fixture"
+    manifest = dict(checkpoints.MODEL, revision="a" * 40)
+    monkeypatch.setattr(checkpoints, "MODEL", manifest)
+    monkeypatch.setattr(
+        checkpoints, "CHECKPOINT_HASHES", {key: hashlib.sha256(payload).hexdigest() for key in manifest["files"]}
+    )
+    monkeypatch.setenv("VANILLASORT_MODEL_CACHE", str(tmp_path))
+    calls = []
+
+    def download(*, repo_id, filename, revision, cache_dir, token, library_name, local_files_only=False):
+        assert repo_id == "Kohaku2580/VanillaSort" and revision == "a" * 40
+        assert cache_dir == str(tmp_path) and token is False
+        calls.append(local_files_only)
+        path = tmp_path / filename
+        if not path.exists():
+            if local_files_only:
+                raise LocalEntryNotFoundError("cache miss")
+            path.write_bytes(payload)
+        return str(path)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    config, info = checkpoints.resolve_model()
+    assert calls == [True, False, True, False]
+    assert info["revision"] == "a" * 40
+    calls.clear()
+    checkpoints.resolve_model()
+    assert calls == [True, True]  # a cached run performs no remote request
+    from pathlib import Path
+
+    Path(config["detector_checkpoint"]).write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        checkpoints.resolve_model()
+
+    def unavailable(**kwargs):
+        raise LocalEntryNotFoundError("offline and empty cache")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", unavailable)
+    with pytest.raises(RuntimeError, match="model_path for offline use"):
+        checkpoints.resolve_model()
