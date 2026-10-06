@@ -1,4 +1,5 @@
 """Canonical model classes for inference and training."""
+
 from .detector import SpikeDetector
 from .huidurep.CMAES import CMAES
 
