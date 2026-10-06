@@ -1,41 +1,22 @@
-# VanillaSort
+# VanillaSort 🐾
 
-[English](README.md) | **简体中文**
+[English](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/README.md) | **简体中文**
 
-VanillaSort 是面向细胞外电生理记录的尖峰分选（spike sorting）工具。它结合 **VanillaDet** 尖峰检测、**HuiduRep** 波形表征与 **VanillaCluster** 聚类，输出尖峰时间及候选神经元单元的归属。
+**📦 Python package · SpikeInterface API · 命令行分选**
 
-本仓库提供推理代码和预训练权重，输入为 **30 kHz 采样的四通道记录**。
+VanillaSort 结合 **VanillaDet** 尖峰检测、**HuiduRep** 波形表征与 **VanillaCluster** 聚类。通过 Python API 或 `vanillasort` 命令处理细胞外记录，获得尖峰时间和候选神经元单元归属。
 
-**论文：** Zishuo Feng 与 Feng Cao，[*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)，bioRxiv，2026。**使用 VanillaSort 必须引用该论文。** [BibTeX](#引用)
+预训练流程处理 **30 kHz 采样的四通道记录**。SpikeInterface API 还为较大的二维探针提供实验性的四近邻适配。论文代码与方法开发说明见 [main 分支](https://github.com/IgarashiAkatuki/VanillaSort/tree/main)。
 
-[实验结果](#实验结果) · [安装](#安装) · [快速开始](#快速开始) · [处理自己的数据](#处理自己的数据) · [输出结果](#输出结果) · [配置](#配置) · [方法](#方法)
+**📄 论文：** Zishuo Feng 与 Feng Cao，[*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)，bioRxiv，2026。**使用 VanillaSort 必须引用该论文。** [BibTeX](#引用)
 
-## 实验结果
+<p align="center">
+  <a href="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/feat/inference-package/assets/vanilla.jpg"><img src="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/feat/inference-package/assets/vanilla.jpg" alt="我们的缅因猫 Vanilla" width="320"></a>
+  <br>
+  <em>这是 Vanilla，我们可爱的缅因猫！🤍</em>
+</p>
 
-[论文表 1–2](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)在 **Hybrid Janelia 静态（Static）与漂移（Drift）子集**上进行评估，每个子集包含 9 段记录，纳入具有真实标签且 SNR ≥ 3 的单元。分选准确率为 `TP / (TP + FP + FN)`，事件匹配容差为 ±6 个采样点。下表为**均值 ± 均值标准误（SEM）**，数值越高越好。
-
-| 分选工具 | 静态准确率 | 漂移准确率 |
-| --- | ---: | ---: |
-| HerdingSpikes2 | 0.35 ± 0.01 | 0.29 ± 0.01 |
-| IronClust | 0.57 ± 0.04 | 0.54 ± 0.03 |
-| JRClust | 0.47 ± 0.04 | 0.35 ± 0.03 |
-| KiloSort | 0.60 ± 0.02 | 0.51 ± 0.02 |
-| KiloSort2 | 0.39 ± 0.03 | 0.30 ± 0.02 |
-| KiloSort4 | 0.40 ± 0.03 | 0.34 ± 0.02 |
-| MountainSort4 | 0.59 ± 0.02 | 0.36 ± 0.02 |
-| MountainSort5 | 0.40 ± 0.06 | 0.33 ± 0.04 |
-| SpykingCircus | 0.57 ± 0.01 | 0.48 ± 0.02 |
-| Tridesclous | 0.54 ± 0.03 | 0.37 ± 0.02 |
-| SimSort | 0.62 ± 0.04 | 0.56 ± 0.03 |
-| HuiduRep（无 DAE） | 0.69 ± 0.02 | 0.56 ± 0.02 |
-| HuiduRep（含 DAE） | 0.70 ± 0.02 | 0.60 ± 0.02 |
-| **VanillaSort（无 DAE）** | **0.73 ± 0.02** | 0.61 ± 0.02 |
-| **VanillaSort（含 DAE）** | **0.73 ± 0.01** | **0.64 ± 0.02** |
-
-DAE 指去噪自编码器。其他工具的分数采用论文引用的 SpikeForest 或对应原始论文结果。
-
-- **检测：** VanillaDet 在静态/漂移子集上的准确率为 0.74/0.71，SimSort 为 0.72/0.68，振幅阈值检测为 0.61/0.60。
-- **分选：** 相比对应的 HuiduRep 基线，VanillaSort 在**静态记录上提高 3–4 个百分点**，在**漂移记录上提高 4–5 个百分点**（配对 Wilcoxon 检验，*p* < 0.05）。
+[📦 安装](#安装) · [🚀 快速开始](#快速开始) · [🐍 Python API](#python-api) · [💻 命令行](#命令行用法) · [📁 输出](#输出结果) · [🧠 架构](#模型架构) · [📊 结果](#实验结果)
 
 ## 安装
 
@@ -44,8 +25,6 @@ DAE 指去噪自编码器。其他工具的分数采用论文引用的 SpikeFore
 创建虚拟环境：
 
 ```bash
-git clone https://github.com/IgarashiAkatuki/VanillaSort.git
-cd VanillaSort
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -61,63 +40,72 @@ Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。
 | Linux / Windows，NVIDIA GPU，CUDA 12.8 示例 | `python -m pip install --upgrade "torch>=2.7.0" --index-url https://download.pytorch.org/whl/cu128` |
 | macOS，Apple 芯片，CPU | `python -m pip install --upgrade "torch>=2.7.0"` |
 
-安装 package（运行依赖由 `pyproject.toml` 声明）：
+从 PyPI 安装 VanillaSort：
 
 ```bash
-python -m pip install -e .
+python -m pip install --upgrade vanillasort
 ```
 
-[`requirements.txt`](requirements.txt) 记录了原始环境的数值计算依赖版本，便于复现。每次运行实际使用的版本会写入 `run.json`。
-
-模型权重托管于 [Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort)，首次加载模型推理时下载，之后复用本地缓存。wheel 和源码包均不含 `.pt` 文件；普通 import 与自动化测试不下载权重。以下 CLI 示例均在仓库根目录运行。
-
-## Python / SpikeInterface API
-
-```python
-import vanillasort
-from spikeinterface.core import BaseSorting, load
-
-sorting = vanillasort.sort(recording)
-assert isinstance(sorting, BaseSorting)
-
-sorting = vanillasort.sort(
-    recording, output_folder="output/recording", model="default",
-    device="auto", seed=0, components=22, verbose=True,
-)
-restored = load("output/recording/sorting")
-```
-
-`recording` 为附带二维通道坐标（微米）的 `BaseRecording`，采样率为 30 kHz（容差 1 Hz），每个 segment 至少 100 samples。有 gain/offset 元数据时会换算到微伏，否则各通道 traces 必须使用共同电压尺度。程序内部执行滤波。可用参数还包括 `model_path`、`profile="d1"` / `"canonical"`、`detector_batch=8`、`embedding_batch=128`。
-
-`components=22` 是历史预设，不会自动估计神经元数量，请按记录设置。非空邻域事件数小于 K 时明确报错，完全无事件时返回空 sorting。API 默认 seed 为 0，历史 CLI 默认仍为 30。`main_channel_id` 根据已分配事件的通道峰峰值中位数确定，保留 recording 的原始通道 ID。
-
-四通道组保留原始通道顺序和算法。较大 probe 按真实坐标寻找四个最近邻通道，遵守 group/shank 边界；检测事件按最强 SNR 通道归属邻域，相交邻域再按分数和 12 samples 半径去重。HuiduRep 的重复/裁剪到 11 通道机制不变。检测器没有缺失通道 mask，因此少于四通道的 group/shank 和三维 probe 会被拒绝。
-
-**较大 probe 适配仍属实验性功能**：跨邻域漂移可能拆分单元，相近同时事件可能被去重抑制；尚未实现跨邻域合并或漂移校正。多个 segment 独立聚类，保留各自采样时钟并使用不同 unit IDs，不自动匹配跨 segment 单元。
-
-traces 每次最多读取 300,000 samples 的四通道 block，检测与 embedding 分批执行。为保持算法，全 segment 的滤波和 median/MAD 仍需要相应主存，运行前检查内存；事件波形/特征存储也随时长增长，并非全流程 out-of-core。
-
-`output_folder=None` 不写文件。指定新建/空目录后：`sorting/` 可由 SpikeInterface 重新加载；`events.npz` 包含对齐的 `sample_index`、`unit_id`、`segment_index`；`segmentN_patchM.npz` 包含邻域详细结果；`run.json` 保存参数、坐标和模型哈希。保存的 sorting 不包含原始 recording，必要时可重新 `register_recording(recording)`。下文 CLI 输出格式保持原样。
-
-默认模型 `hybrid-janelia-2026.09` 托管于 [Kohaku2580/VanillaSort](https://huggingface.co/Kohaku2580/VanillaSort)，固定 commit `dbaa0cf5d14a737d494af0fafff402f62453c6ee`，总计约 36 MiB，与原始权重逐字节一致。仓库 ID、revision、文件名和 SHA-256 集中在 `configs/default_model.json`。首次推理下载，后续先读取固定 revision 的本地缓存并校验哈希，无需网络请求。默认使用 Hugging Face 标准缓存（支持 `HF_HOME` / `HF_HUB_CACHE`），也可设置 `VANILLASORT_MODEL_CACHE` 为缓存根目录。缓存准备好后可用 `HF_HUB_OFFLINE=1` 离线运行；空缓存会明确报错，也可通过 `model_path` 完全离线加载。公开模型不需要 token。`python -m vanillasort --verify-only` 可提前下载并校验默认权重；CLI self-test 在缓存缺失时也会下载。
-
-本地模型支持 `model_path="/path/to/model.pt"`：文件包含 `detector_state_dict`、`huidurep_state_dict` 和可选 `config`；也可指定包含 `config.json` 及两个 checkpoint 的目录。配置中的 checkpoint 路径相对该目录。兼容原始 state dict、`state_dict` / `model_state_dict` 包装和 `module.` 前缀。详细格式见 [英文说明](README.md#model-checkpoints)。
-
-核心实现唯一位于 `src/vanillasort`，训练代码可使用 `from vanillasort.models import VanillaDet, HuiduRep`。当前 checkout 没有训练驱动脚本或数据集，已有模型训练方法保留。开发安装 `pip install -e ".[dev]"`，运行 `pytest`。`requirements.txt` 仅保留历史环境参考版本，不作为 package 安装命令。`vanillasort` 和 `python -m vanillasort` 可在仓库外使用，`run.py` 为兼容入口。
+安装时会自动安装运行依赖。两个模型权重合计约 36 MiB，首次使用时从 [Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort) 下载并缓存。以下命令可在任意目录运行。
 
 ## 快速开始
 
 用内置的两秒合成记录运行完整流程，混合模型的组分数设为 4：
 
 ```bash
-python run.py --self-test --device cpu --output output/self-test
+vanillasort --self-test --device cpu --output output/self-test
 ```
 
 该命令检查检测、波形编码、聚类和结果导出。成功后会打印 `Done:`，并在 `output/self-test/` 中生成 `events.npz` 和 `run.json`。
 
 处理自己的记录时，`--device auto` 会优先使用 CUDA，否则使用 CPU。每次运行请选择新建或空的输出目录。
 
-## 处理自己的数据
+## Python API
+
+将带有通道坐标的 SpikeInterface `BaseRecording` 传入 `vanillasort.sort()`：
+
+```python
+import vanillasort
+from spikeinterface.core import load
+
+# recording 是你的 SpikeInterface BaseRecording。
+sorting = vanillasort.sort(
+    recording,
+    components=22,  # 按当前记录选择 GMM 组分数
+    output_folder="output/recording",
+    device="auto",
+    seed=0,
+)
+
+for unit_id in sorting.unit_ids:
+    samples = sorting.get_unit_spike_train(unit_id, segment_index=0)
+    print(unit_id, len(samples))
+
+restored = load("output/recording/sorting")
+```
+
+返回值是 SpikeInterface `BaseSorting`。尖峰序列使用各 segment 内从 0 开始的采样点索引；`main_channel_id` 记录每个单元对应的主要记录通道。
+
+**输入要求：** 原始记录采样率为 30,000 Hz（容差 ±1 Hz），每个 segment 至少 100 个采样点，通道坐标为以微米表示的有限二维坐标。每个通道组或 shank 至少包含四个触点。有通道 gain/offset 时会自动换算，否则各通道使用共同电压尺度。程序内部完成滤波。
+
+| 参数 | 默认值 | 用途 |
+| --- | --- | --- |
+| `components` | `22` | GMM 组分数 K；根据记录选择 K ≥ 2。 |
+| `output_folder` | `None` | 将结果保留在内存，或保存到新建/空目录。 |
+| `device` | `"auto"` | 优先使用 CUDA，否则使用 CPU；也可指定 `"cpu"` 或 `"cuda:0"`。 |
+| `seed` | `0` | 可复现的初始化；CLI 默认值为 `30`。 |
+| `profile` | `"d1"` | 选择 `"d1"` 或 `"canonical"` 预处理。 |
+| `model`、`model_path` | `"default"`、`None` | 使用预训练模型或本地权重。 |
+| `detector_batch`、`embedding_batch` | `8`、`128` | 推理批大小。 |
+| `verbose` | `True` | 打印进度。 |
+
+K 分别用于每个邻域和 segment。非空邻域需要至少 K 个可分选事件；检测结果为空时返回空 sorting。
+
+**较大探针：** 实验性适配器构建四近邻，遵守 group/shank 边界，并在 12 个采样点范围内对重叠检测去重。各 segment 使用独立单元 ID。漂移校正、跨邻域和跨 segment 单元匹配仍待实现；漂移单元可能被拆分，相近的同时事件可能被抑制。
+
+**内存：** 每次以最多 300,000 个采样点为一块读取一个四通道邻域。精确滤波和中位数/MAD 归一化需要完整 segment 驻留内存，运行前会检查可用内存。波形存储随事件数增长；CUDA 显存不足时会缩小推理批次并重试。
+
+## 命令行用法
 
 ### 准备输入
 
@@ -129,7 +117,7 @@ python run.py --self-test --device cpu --output output/self-test
 | `coords` | `(4, 2)` | 通道物理坐标，单位为微米，顺序与 `traces` 的通道顺序一致。 |
 | `fs_hz` | 标量 | 采样频率，单位为 Hz，设为 `30000.0`。 |
 
-数组中的数值应为有限值，记录至少包含 100 个时间采样点，各通道使用一致的电压尺度。程序会完成滤波和归一化。对于通道数更多的探针，可导出一个四通道组及其对应坐标。
+数组中的数值应为有限值，记录至少包含 100 个时间采样点，各通道使用一致的电压尺度。程序会完成滤波和归一化。通道数更多的探针可使用 Python API，或导出一个四通道组及其对应坐标供 CLI 使用。
 
 例如，将已有的信号和坐标数组打包：
 
@@ -150,7 +138,7 @@ np.savez(
 ### 运行分选
 
 ```bash
-python run.py --input recording.npz --components 22 --output output/recording-k22
+vanillasort --input recording.npz --components 22 --output output/recording-k22
 ```
 
 通过 `--components` 指定适合当前记录的高斯混合模型组分数 **K**。K 至少为 2，可用于分选的事件数应不少于 K。仓库中的 Hybrid Janelia 配置为：记录 **11/12** 使用 **22**，记录 **21/22/31/32** 使用 **24**。
@@ -158,7 +146,7 @@ python run.py --input recording.npz --components 22 --output output/recording-k2
 也可以分别传入两个 `.npy` 文件：
 
 ```bash
-python run.py --input traces.npy --coords coords.npy --fs 30000 --components 22 --output output/recording-npy
+vanillasort --input traces.npy --coords coords.npy --fs 30000 --components 22 --output output/recording-npy
 ```
 
 NPZ 中的 `fs_hz` 优先于 `--fs`；`--coords` 指定的坐标优先于 NPZ 内的坐标。
@@ -166,10 +154,25 @@ NPZ 中的 `fs_hz` 优先于 `--fs`；`--coords` 指定的坐标优先于 NPZ �
 仅导出尖峰检测结果：
 
 ```bash
-python run.py --input recording.npz --detect-only --output output/detections
+vanillasort --input recording.npz --detect-only --output output/detections
 ```
 
 ## 输出结果
+
+### Python API 输出
+
+指定 `output_folder` 后，除返回 `BaseSorting` 外，还会保存：
+
+| 路径 | 内容 |
+| --- | --- |
+| `sorting/` | 可通过 `spikeinterface.core.load()` 重新加载的分选对象。 |
+| `events.npz` | 对齐的 `sample_index`、`unit_id`、`segment_index` 数组。 |
+| `segmentN_patchM.npz` | 每个 segment 和邻域的详细数组。 |
+| `run.json` | 参数、通道坐标、模型哈希、依赖版本和处理诊断信息。 |
+
+使用 `restored.register_recording(recording)` 可将重新加载的分选结果与原始记录关联。
+
+### CLI 输出
 
 每次运行生成两个文件：
 
@@ -217,6 +220,26 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 时间以输入记录的起点为基准。可结合波形、放电率和尖峰间隔评估候选单元。`run.json` 的 `clustering` 字段记录 GMM 收敛状态、警告、模板构建情况及归属修正结果。
 
+## 模型与缓存
+
+默认模型为 `hybrid-janelia-2026.09`，托管于 [Kohaku2580/VanillaSort](https://huggingface.co/Kohaku2580/VanillaSort)。固定 revision 和 SHA-256 哈希记录在 [`default_model.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/configs/default_model.json) 中，每次加载都会校验权重哈希。
+
+提前下载并校验权重：
+
+```bash
+vanillasort --verify-only
+```
+
+程序使用 Hugging Face 标准缓存（支持 `HF_HOME` / `HF_HUB_CACHE`），也可通过 `VANILLASORT_MODEL_CACHE` 指定其他 Hub 缓存根目录。缓存准备好后，设置 `HF_HUB_OFFLINE=1` 即可离线运行。
+
+使用本地模型：
+
+```python
+sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components=22)
+```
+
+合并的 `.pt` 文件包含 `detector_state_dict`、`huidurep_state_dict` 和可选的 `config`。模型目录则包含 `config.json`，以及 `detector_checkpoint` 和 `huidurep_checkpoint` 指定的两个权重文件。加载时使用 `weights_only=True` 并严格匹配模型结构。
+
 ## 配置
 
 常用命令行参数：
@@ -235,7 +258,7 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 遇到 CUDA 显存不足时，程序会将对应推理批次的大小减半并重试。滤波和归一化在主机内存中处理整段选定记录。运行前会检查可用内存是否达到约 `12 × 输入数组字节数 + 512 MiB`；波形和特征所需内存还会随事件数增长。
 
-预处理与模型设置见 [`configs/default.json`](src/vanillasort/configs/default.json)：
+预处理与模型设置见 [`configs/default.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/configs/default.json)：
 
 | 设置 | `d1`（默认） | `canonical` |
 | --- | --- | --- |
@@ -247,6 +270,14 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 两种配置都会对检测器输入按通道进行中位数/MAD 归一化。事件信噪比筛选使用 canonical 的 200–6,000 Hz 信号。使用 `--seconds` 处理前缀时，归一化和聚类也在该前缀上拟合。请将 `run.json` 与结果一起保存，以记录这些选择。
 
+## 模型架构
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/feat/inference-package/assets/architecture.jpg"><img src="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/feat/inference-package/assets/architecture.jpg" alt="VanillaSort 模型架构：VanillaDet 尖峰检测、HuiduRep 波形表征与 VanillaCluster 神经元归属" width="1000"></a>
+</p>
+
+**VanillaDet → HuiduRep → VanillaCluster。** 图中展示了检测器训练与事件筛选、波形表征学习，以及结合相对振幅特征和模板引导重分配的聚类流程。
+
 ## 方法
 
 1. **VanillaDet：检测尖峰。** 卷积前端与六层局部 Transformer 输出逐采样点的检测分数。预训练模型使用 256 维隐状态、四个注意力头、旋转位置编码和 L2 归一化的 query/key。峰值筛选采用 12 个采样点的排除半径。达到直接接受阈值的事件予以保留；分数介于两个阈值之间的事件，需要最强通道的信噪比至少为 3，且另一个通道的信噪比至少为 2。
@@ -255,19 +286,61 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 模板修正按交替的一秒时间块将事件分为两折。每个目标折使用另一折中 GMM 后验概率至少为 0.9 的事件构建模板。每个核心事件池最多保留 512 个事件，再按检测分数去除最低的 25%。有效模板需要至少 30 个保留事件且能量非零。残差拟合搜索 ±2 个采样点的位移和 0.5–2.0 的共享振幅缩放，事件时间保持不变。模板支持不足的事件沿用 GMM 归属。
 
+## 实验结果
+
+[论文表 1–2](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)在 **Hybrid Janelia 静态（Static）与漂移（Drift）子集**上进行评估，每个子集包含 9 段记录，纳入具有真实标签且 SNR ≥ 3 的单元。分选准确率为 `TP / (TP + FP + FN)`，事件匹配容差为 ±6 个采样点。下表为**均值 ± 均值标准误（SEM）**，数值越高越好。
+
+| 分选工具 | 静态准确率 | 漂移准确率 |
+| --- | ---: | ---: |
+| HerdingSpikes2 | 0.35 ± 0.01 | 0.29 ± 0.01 |
+| IronClust | 0.57 ± 0.04 | 0.54 ± 0.03 |
+| JRClust | 0.47 ± 0.04 | 0.35 ± 0.03 |
+| KiloSort | 0.60 ± 0.02 | 0.51 ± 0.02 |
+| KiloSort2 | 0.39 ± 0.03 | 0.30 ± 0.02 |
+| KiloSort4 | 0.40 ± 0.03 | 0.34 ± 0.02 |
+| MountainSort4 | 0.59 ± 0.02 | 0.36 ± 0.02 |
+| MountainSort5 | 0.40 ± 0.06 | 0.33 ± 0.04 |
+| SpykingCircus | 0.57 ± 0.01 | 0.48 ± 0.02 |
+| Tridesclous | 0.54 ± 0.03 | 0.37 ± 0.02 |
+| SimSort | 0.62 ± 0.04 | 0.56 ± 0.03 |
+| HuiduRep（无 DAE） | 0.69 ± 0.02 | 0.56 ± 0.02 |
+| HuiduRep（含 DAE） | 0.70 ± 0.02 | 0.60 ± 0.02 |
+| **VanillaSort（无 DAE）** | **0.73 ± 0.02** | 0.61 ± 0.02 |
+| **VanillaSort（含 DAE）** | **0.73 ± 0.01** | **0.64 ± 0.02** |
+
+DAE 指去噪自编码器。其他工具的分数采用论文引用的 SpikeForest 或对应原始论文结果。
+
+- **检测：** VanillaDet 在静态/漂移子集上的准确率为 0.74/0.71，SimSort 为 0.72/0.68，振幅阈值检测为 0.61/0.60。
+- **分选：** 相比对应的 HuiduRep 基线，VanillaSort 在**静态记录上提高 3–4 个百分点**，在**漂移记录上提高 4–5 个百分点**（配对 Wilcoxon 检验，*p* < 0.05）。
+
+## Package 开发
+
+开发 package：
+
+```bash
+git clone --branch feat/inference-package https://github.com/IgarashiAkatuki/VanillaSort.git
+cd VanillaSort
+python -m pip install -e ".[dev]"
+pytest
+```
+
+测试使用小型合成记录与本地生成的模型权重。[`requirements.txt`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/requirements.txt) 记录数值计算依赖的历史参考版本；package 的运行依赖由 [`pyproject.toml`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/pyproject.toml) 声明。
+
+维护者可按[发布流程](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/docs/releasing.md)通过 GitHub Actions 发布版本。
+
 ## 仓库结构
 
 | 路径 | 作用 |
 | --- | --- |
-| [`src/vanillasort/`](src/vanillasort/) | 唯一核心实现：API、pipeline、models、geometry、checkpoint 和数值运算。 |
-| [`run.py`](run.py) | 转发到 package CLI 的兼容入口。 |
-| [`pyproject.toml`](pyproject.toml) / [`tests/`](tests/) | 安装配置和小型合成测试。 |
-| [`models/detector.py`](src/vanillasort/models/detector.py) | VanillaDet 的卷积前端、注意力层与预测头。 |
-| [`models/huidurep/`](src/vanillasort/models/huidurep/) | HuiduRep 编码器、解码器、投影模块及 `CMAES` 模型类。 |
-| [`ops.py`](src/vanillasort/ops.py) | 事件筛选、波形预处理、振幅特征和模板修正所需的数值运算。 |
-| [`configs/default.json`](src/vanillasort/configs/default.json) | 模型结构、预处理配置、阈值及聚类设置。 |
-| [`configs/default_model.json`](src/vanillasort/configs/default_model.json) | Hugging Face 模型仓库、固定 revision 和校验哈希；权重单独缓存。 |
-| [`requirements.txt`](requirements.txt) | 用于复现原始环境的数值计算依赖参考版本。 |
+| [`src/vanillasort/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package/src/vanillasort/) | 唯一核心实现：API、pipeline、models、geometry、checkpoint 和数值运算。 |
+| [`run.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/run.py) | 转发到 package CLI 的兼容入口。 |
+| [`pyproject.toml`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/pyproject.toml) / [`tests/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package/tests/) | 安装配置和小型合成测试。 |
+| [`models/detector.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/models/detector.py) | VanillaDet 的卷积前端、注意力层与预测头。 |
+| [`models/huidurep/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package/src/vanillasort/models/huidurep/) | HuiduRep 编码器、解码器、投影模块及 `CMAES` 模型类。 |
+| [`ops.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/ops.py) | 事件筛选、波形预处理、振幅特征和模板修正所需的数值运算。 |
+| [`configs/default.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/configs/default.json) | 模型结构、预处理配置、阈值及聚类设置。 |
+| [`configs/default_model.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/src/vanillasort/configs/default_model.json) | Hugging Face 模型仓库、固定 revision 和校验哈希；权重单独缓存。 |
+| [`requirements.txt`](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/requirements.txt) | 用于复现原始环境的数值计算依赖参考版本。 |
 
 ## 引用
 
@@ -288,4 +361,4 @@ Zishuo Feng and Feng Cao. **Spike Sorting with VanillaSort.** bioRxiv, 2026. [do
 
 ## 许可证
 
-[GNU Affero General Public License v3.0](LICENSE)。
+[GNU Affero General Public License v3.0](https://github.com/IgarashiAkatuki/VanillaSort/blob/feat/inference-package/LICENSE)。

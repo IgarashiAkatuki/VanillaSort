@@ -1,2 +1,4 @@
 prune model_upload
 global-exclude *.pt
+include README.zh-CN.md
+recursive-include tests *.py

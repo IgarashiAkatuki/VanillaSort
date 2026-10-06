@@ -25,6 +25,8 @@ vanillasort = "vanillasort.cli:main"
 
 [project.urls]
 Repository = "https://github.com/IgarashiAkatuki/VanillaSort"
+Documentation = "https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package#readme"
+Issues = "https://github.com/IgarashiAkatuki/VanillaSort/issues"
 Paper = "https://doi.org/10.64898/2026.09.18.752552"
 
 [tool.setuptools]
