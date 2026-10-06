@@ -1,14 +1,30 @@
-# VanillaSort
+# VanillaSort 🐾
 
 **English** | [简体中文](README.zh-CN.md)
 
+**🛠️ Research code · Paper results · Method development**
+
 VanillaSort is a spike-sorting pipeline for extracellular recordings. It combines **VanillaDet** spike detection, **HuiduRep** waveform representations, and **VanillaCluster** clustering to produce spike times and putative neuronal-unit assignments.
 
-This repository provides inference code and pretrained checkpoints for **four-channel recordings sampled at 30 kHz**.
+The research implementation provides inference code and pretrained checkpoints for **four-channel recordings sampled at 30 kHz**. For the installable package and SpikeInterface API, see the [package branch](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package).
 
-**Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
+**📄 Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
 
-[Results](#results) · [Installation](#installation) · [Quick start](#quick-start) · [Your data](#sort-your-data) · [Outputs](#outputs) · [Configuration](#configuration) · [Method](#method)
+<p align="center">
+  <a href="assets/vanilla.jpg"><img src="assets/vanilla.jpg" alt="Vanilla, our Maine Coon cat" width="320"></a>
+  <br>
+  <em>Meet Vanilla, our lovely Maine Coon! 🤍</em>
+</p>
+
+[🧠 Architecture](#model-architecture) · [📊 Results](#results) · [📦 Installation](#installation) · [🚀 Quick start](#quick-start) · [🧪 Your data](#sort-your-data) · [📁 Outputs](#outputs) · [⚙️ Configuration](#configuration) · [🔬 Method](#method) · [🛠️ Development](#research-and-development)
+
+## Model architecture
+
+<p align="center">
+  <a href="assets/architecture.jpg"><img src="assets/architecture.jpg" alt="VanillaSort architecture: VanillaDet detection, HuiduRep waveform representations, and VanillaCluster neuronal assignment" width="1000"></a>
+</p>
+
+**VanillaDet → HuiduRep → VanillaCluster.** The diagram shows detector training and event selection, waveform representation learning, and clustering with relative-amplitude features and template-guided reassignment.
 
 ## Results
 
@@ -220,6 +236,12 @@ Both profiles use per-channel median/MAD normalization for detector input. Event
 3. **VanillaCluster — assign units.** Three relative-amplitude features are formed from per-channel peak-to-peak amplitude fractions, projected onto a Helmert contrast basis, and standardized. A full-covariance GMM clusters the resulting 35-dimensional vectors. One template-residual refinement pass then updates assignments among the top three candidate components.
 
 Template refinement splits events into alternating one-second blocks. For each target fold, templates are built from the opposite fold using events with GMM posterior probability of at least 0.9. Each core pool is capped at 512 events, then its lowest-scoring 25% by detector score is removed. A valid template requires at least 30 retained events and nonzero energy. Residual fitting searches shifts of ±2 samples and shared amplitude scales from 0.5 to 2.0; event timestamps are preserved. Events with insufficient template support retain their GMM assignments.
+
+## Research and development
+
+- Extend the detector in [`detector_model.py`](detector_model.py) or the waveform representation models in [`huidurep/`](huidurep/), using checkpoints that match the model architecture.
+- Configure inference experiments in [`config.json`](config.json); preprocessing, event selection, and clustering are implemented in [`run.py`](run.py) and [`frozen_ops.py`](frozen_ops.py).
+- After changes, run the [synthetic quick start](#quick-start). Keep each experiment's `run.json` alongside its outputs to record parameters, random seeds, dependency versions, and checkpoint hashes.
 
 ## Repository layout
 

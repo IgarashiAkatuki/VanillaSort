@@ -1,14 +1,30 @@
-# VanillaSort
+# VanillaSort 🐾
 
 [English](README.md) | **简体中文**
 
+**🛠️ 论文代码 · 实验结果 · 方法开发**
+
 VanillaSort 是面向细胞外电生理记录的尖峰分选（spike sorting）工具。它结合 **VanillaDet** 尖峰检测、**HuiduRep** 波形表征与 **VanillaCluster** 聚类，输出尖峰时间及候选神经元单元的归属。
 
-本仓库提供推理代码和预训练权重，输入为 **30 kHz 采样的四通道记录**。
+论文实现提供推理代码和预训练权重，输入为 **30 kHz 采样的四通道记录**。可安装的 Python package 与 SpikeInterface API 见 [package 分支](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package)。
 
-**论文：** Zishuo Feng 与 Feng Cao，[*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)，bioRxiv，2026。**使用 VanillaSort 必须引用该论文。** [BibTeX](#引用)
+**📄 论文：** Zishuo Feng 与 Feng Cao，[*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)，bioRxiv，2026。**使用 VanillaSort 必须引用该论文。** [BibTeX](#引用)
 
-[实验结果](#实验结果) · [安装](#安装) · [快速开始](#快速开始) · [处理自己的数据](#处理自己的数据) · [输出结果](#输出结果) · [配置](#配置) · [方法](#方法)
+<p align="center">
+  <a href="assets/vanilla.jpg"><img src="assets/vanilla.jpg" alt="我们的缅因猫 Vanilla" width="320"></a>
+  <br>
+  <em>这是 Vanilla，我们可爱的缅因猫！🤍</em>
+</p>
+
+[🧠 模型架构](#模型架构) · [📊 实验结果](#实验结果) · [📦 安装](#安装) · [🚀 快速开始](#快速开始) · [🧪 处理自己的数据](#处理自己的数据) · [📁 输出结果](#输出结果) · [⚙️ 配置](#配置) · [🔬 方法](#方法) · [🛠️ 开发](#研究与开发)
+
+## 模型架构
+
+<p align="center">
+  <a href="assets/architecture.jpg"><img src="assets/architecture.jpg" alt="VanillaSort 模型架构：VanillaDet 尖峰检测、HuiduRep 波形表征与 VanillaCluster 神经元归属" width="1000"></a>
+</p>
+
+**VanillaDet → HuiduRep → VanillaCluster。** 图中展示了检测器训练与事件筛选、波形表征学习，以及结合相对振幅特征和模板引导重分配的聚类流程。
 
 ## 实验结果
 
@@ -220,6 +236,12 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 3. **VanillaCluster：分配单元。** 根据各通道峰峰值占总峰峰值的比例，投影到 Helmert 对比基并标准化，得到三维相对振幅特征。完整协方差 GMM 对组合后的 35 维向量进行聚类，随后用一轮模板残差修正，在得分最高的三个候选组分间更新归属。
 
 模板修正按交替的一秒时间块将事件分为两折。每个目标折使用另一折中 GMM 后验概率至少为 0.9 的事件构建模板。每个核心事件池最多保留 512 个事件，再按检测分数去除最低的 25%。有效模板需要至少 30 个保留事件且能量非零。残差拟合搜索 ±2 个采样点的位移和 0.5–2.0 的共享振幅缩放，事件时间保持不变。模板支持不足的事件沿用 GMM 归属。
+
+## 研究与开发
+
+- 在 [`detector_model.py`](detector_model.py) 中扩展检测器，或在 [`huidurep/`](huidurep/) 中修改波形表征模型，并使用与模型结构匹配的权重。
+- 通过 [`config.json`](config.json) 配置推理实验；预处理、事件筛选与聚类的实现位于 [`run.py`](run.py) 和 [`frozen_ops.py`](frozen_ops.py)。
+- 修改后运行[合成数据快速检查](#快速开始)。将每次实验的 `run.json` 与结果一起保存，记录参数、随机种子、依赖版本和权重哈希。
 
 ## 仓库结构
 
