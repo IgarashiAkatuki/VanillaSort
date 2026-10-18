@@ -1,0 +1,16 @@
+{
+  "version": "hybrid-janelia-2026.09",
+  "repo_id": "Kohaku2580/VanillaSort",
+  "revision": "dbaa0cf5d14a737d494af0fafff402f62453c6ee",
+  "original_source": "https://github.com/IgarashiAkatuki/VanillaSort/tree/00a9ef06e88a955406ad2902d7bc56617f0afd2e",
+  "files": {
+    "detector_checkpoint": {
+      "filename": "detector_mask_r4_best_ap.pt",
+      "sha256": "c112499b0077d3613ef5b791f61130eacb75d090bea4f6fa9d59aabc0c2aa1a6"
+    },
+    "huidurep_checkpoint": {
+      "filename": "HuiduRep.pt",
+      "sha256": "048203dbb326e159f4320bc4a7204c93a9951477b8c9995a75728bb87378da68"
+    }
+  }
+}

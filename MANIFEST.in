@@ -1,0 +1,7 @@
+prune model_upload
+global-exclude *.pt
+include README.zh-CN.md
+include CHANGELOG.md
+recursive-include docs *.md
+recursive-include examples *.py
+recursive-include tests *.py

@@ -1,57 +1,22 @@
 # VanillaSort 🐾
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/README.zh-CN.md)
 
-**🛠️ Research code · Paper results · Method development**
+**📦 Python package · SpikeInterface API · Research & development**
 
-VanillaSort is a spike-sorting pipeline for extracellular recordings. It combines **VanillaDet** spike detection, **HuiduRep** waveform representations, and **VanillaCluster** clustering to produce spike times and putative neuronal-unit assignments.
+VanillaSort combines **VanillaDet** spike detection, **HuiduRep** waveform representations, and **VanillaCluster** clustering. Sort extracellular recordings through a Python API or the `vanillasort` command and obtain spike times and putative neuronal-unit assignments.
 
-The research implementation provides inference code and pretrained checkpoints for **four-channel recordings sampled at 30 kHz**. For the installable package and SpikeInterface API, see the [package branch](https://github.com/IgarashiAkatuki/VanillaSort/tree/feat/inference-package).
+The pretrained pipeline processes **four-channel recordings at 30 kHz**. The SpikeInterface API also provides an experimental nearest-four-neighbor adapter for larger 2D probes. The `main` branch contains the installable package, research implementation, and development tools in a shared `src/vanillasort/` layout.
 
 **📄 Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
 
 <p align="center">
-  <a href="assets/vanilla.jpg"><img src="assets/vanilla.jpg" alt="Vanilla, our Maine Coon cat" width="320"></a>
+  <a href="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/main/assets/vanilla.jpg"><img src="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/main/assets/vanilla.jpg" alt="Vanilla, our Maine Coon cat" width="320"></a>
   <br>
   <em>Meet Vanilla, our lovely Maine Coon! 🤍</em>
 </p>
 
-[🧠 Architecture](#model-architecture) · [📊 Results](#results) · [📦 Installation](#installation) · [🚀 Quick start](#quick-start) · [🧪 Your data](#sort-your-data) · [📁 Outputs](#outputs) · [⚙️ Configuration](#configuration) · [🔬 Method](#method) · [🛠️ Development](#research-and-development)
-
-## Model architecture
-
-<p align="center">
-  <a href="assets/architecture.jpg"><img src="assets/architecture.jpg" alt="VanillaSort architecture: VanillaDet detection, HuiduRep waveform representations, and VanillaCluster neuronal assignment" width="1000"></a>
-</p>
-
-**VanillaDet → HuiduRep → VanillaCluster.** The diagram shows detector training and event selection, waveform representation learning, and clustering with relative-amplitude features and template-guided reassignment.
-
-## Results
-
-The [paper's Tables 1–2](https://www.biorxiv.org/content/10.64898/2026.09.18.752552) report results on **Hybrid Janelia Static and Drift**, with nine recordings per subset and ground-truth units with SNR ≥ 3. Sorting accuracy is `TP / (TP + FP + FN)`, with event matching within ±6 samples. Values below are **mean ± SEM**; higher is better.
-
-| Spike sorter | Static accuracy | Drift accuracy |
-| --- | ---: | ---: |
-| HerdingSpikes2 | 0.35 ± 0.01 | 0.29 ± 0.01 |
-| IronClust | 0.57 ± 0.04 | 0.54 ± 0.03 |
-| JRClust | 0.47 ± 0.04 | 0.35 ± 0.03 |
-| KiloSort | 0.60 ± 0.02 | 0.51 ± 0.02 |
-| KiloSort2 | 0.39 ± 0.03 | 0.30 ± 0.02 |
-| KiloSort4 | 0.40 ± 0.03 | 0.34 ± 0.02 |
-| MountainSort4 | 0.59 ± 0.02 | 0.36 ± 0.02 |
-| MountainSort5 | 0.40 ± 0.06 | 0.33 ± 0.04 |
-| SpykingCircus | 0.57 ± 0.01 | 0.48 ± 0.02 |
-| Tridesclous | 0.54 ± 0.03 | 0.37 ± 0.02 |
-| SimSort | 0.62 ± 0.04 | 0.56 ± 0.03 |
-| HuiduRep (without DAE) | 0.69 ± 0.02 | 0.56 ± 0.02 |
-| HuiduRep (with DAE) | 0.70 ± 0.02 | 0.60 ± 0.02 |
-| **VanillaSort (without DAE)** | **0.73 ± 0.02** | 0.61 ± 0.02 |
-| **VanillaSort (with DAE)** | **0.73 ± 0.01** | **0.64 ± 0.02** |
-
-DAE denotes a denoising autoencoder. Other-tool scores are the SpikeForest or original-publication results used in the paper.
-
-- **Detection:** VanillaDet achieves 0.74/0.71 accuracy on Static/Drift, compared with SimSort's 0.72/0.68 and amplitude thresholding's 0.61/0.60.
-- **Sorting:** VanillaSort improves accuracy over the corresponding HuiduRep baselines by **3–4 percentage points on Static** and **4–5 points on Drift** (paired Wilcoxon test, *p* < 0.05).
+[📦 Install](#installation) · [🚀 Quick start](#quick-start) · [🐍 Python API](#python-api) · [💻 CLI](#command-line-usage) · [📁 Outputs](#outputs) · [🧠 Architecture](#model-architecture) · [📊 Results](#results) · [🛠️ Development](#research-and-development)
 
 ## Installation
 
@@ -60,8 +25,6 @@ Requirements: **Python 3.10+**, **PyTorch 2.7.0+**, and **CUDA 12.8+** with a co
 Create a virtual environment:
 
 ```bash
-git clone https://github.com/IgarashiAkatuki/VanillaSort.git
-cd VanillaSort
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -77,29 +40,76 @@ For GPU execution, select **Stable** and the newest compatible CUDA version **12
 | Linux / Windows, NVIDIA GPU, CUDA 12.8 example | `python -m pip install --upgrade "torch>=2.7.0" --index-url https://download.pytorch.org/whl/cu128` |
 | macOS, Apple silicon, CPU | `python -m pip install --upgrade "torch>=2.7.0"` |
 
-Install the latest numerical dependencies compatible with your environment:
+Install VanillaSort from PyPI:
 
 ```bash
-python -m pip install --upgrade numpy scipy scikit-learn joblib threadpoolctl psutil
+python -m pip install --upgrade vanillasort
 ```
 
-[`requirements.txt`](requirements.txt) records the numerical dependency versions from the original environment for reproducibility. Each run records its installed versions in `run.json`.
-
-Both model checkpoints are included in [`checkpoints/`](checkpoints/). Run the examples below from the repository root.
+The package installs its runtime dependencies. Both model checkpoints (about 36 MiB total) download from [Hugging Face](https://huggingface.co/Kohaku2580/VanillaSort) on first use and are cached locally. The commands below work from any directory.
 
 ## Quick start
 
 Run the complete pipeline on the built-in two-second synthetic recording with four mixture components:
 
 ```bash
-python run.py --self-test --device cpu --output output/self-test
+vanillasort --self-test --device cpu --output output/self-test
 ```
 
 This checks detection, waveform encoding, clustering, and result export. A successful run prints `Done:` and saves `events.npz` and `run.json` in `output/self-test/`.
 
 For your recordings, `--device auto` selects CUDA when available and CPU otherwise. Use a new or empty output directory for each run.
 
-## Sort your data
+## Python API
+
+Pass a SpikeInterface `BaseRecording` with channel locations to `vanillasort.sort()`:
+
+```python
+import vanillasort
+from spikeinterface.core import load
+
+# recording is your SpikeInterface BaseRecording.
+sorting = vanillasort.sort(
+    recording,
+    components=22,  # choose the GMM component count for your recording
+    output_folder="output/recording",
+    device="auto",
+    seed=0,
+)
+
+for unit_id in sorting.unit_ids:
+    samples = sorting.get_unit_spike_train(unit_id, segment_index=0)
+    print(unit_id, len(samples))
+
+restored = load("output/recording/sorting")
+```
+
+The result is a SpikeInterface `BaseSorting`. Spike trains use zero-based sample indices within each segment; `main_channel_id` identifies each unit's main recording channel.
+
+**Input:** raw recordings at 30,000 Hz (tolerance ±1 Hz), at least 100 samples per segment, and finite 2D channel locations in micrometres. Each channel group or shank must contain at least four contacts. Channel gains and offsets are applied when present; traces otherwise need a common voltage scale. Filtering is internal.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `components` | `22` | GMM component count K; choose K ≥ 2 for your recording. |
+| `output_folder` | `None` | Keep results in memory, or save to a new/empty directory. |
+| `device` | `"auto"` | CUDA when available, otherwise CPU; also accepts `"cpu"` or `"cuda:0"`. |
+| `seed` | `0` | Reproducible initialization; the CLI default is `30`. |
+| `profile` | `"d1"` | Select `"d1"` or `"canonical"` preprocessing. |
+| `model`, `model_path` | `"default"`, `None` | Use the pretrained model or a local checkpoint. |
+| `detector_batch`, `embedding_batch` | `8`, `128` | Inference batch sizes. |
+| `verbose` | `True` | Print progress. |
+
+K applies to each neighborhood and segment. A nonempty neighborhood needs at least K sortable events; empty detections produce an empty sorting.
+
+**Larger probes:** the experimental adapter builds nearest-four neighborhoods, respects group/shank boundaries, and suppresses overlapping detections within 12 samples. Segments receive independent unit IDs. Drift correction and unit matching across neighborhoods or segments remain future work; drifting units may split and nearby simultaneous events may be suppressed.
+
+**Memory:** traces are read in blocks of at most 300,000 samples for one four-channel neighborhood at a time. Exact filtering and median/MAD normalization require a complete segment in RAM, with an initial memory check. Waveform storage grows with the event count. CUDA memory errors trigger retries with smaller inference batches.
+
+**Runtime and progress (since 0.2.0):** each neighborhood runs a complete detector pass, so runtime grows with the number of neighborhoods as well as recording duration. The standard 64-channel, two-column synthetic probe produces 62 neighborhoods. `verbose=True` reports the selected device, neighborhood count, and detection/embedding progress approximately every five seconds (after a batch completes). Per-neighborhood stage timings are saved in `run.json` under `runs[].timings_seconds`. The updated SpikeInterface wrapper echoes progress to the terminal and retains it in `sorter_output/vanillasort.log`; `spikeinterface_log.json` is finalized after sorting ends.
+
+Long rotary-detector inference uses local attention tiles with the original receptive field and checkpoints. CPU API sorting uses up to eight PyTorch threads, respecting a smaller caller limit and restoring that limit afterward. CUDA batch reductions carry over to later neighborhoods in the same sort. Larger probes can still take substantial time; GPU utilization alone does not show which stage is running. With VanillaSort and the updated SpikeInterface wrapper installed, [this reproduction script](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/examples/reproduce_si_4832.py) runs the 64-channel, 60-second example using a fixed input seed and reusable recording cache.
+
+## Command-line usage
 
 ### Prepare the input
 
@@ -111,7 +121,7 @@ Save a NumPy `.npz` archive containing:
 | `coords` | `(4, 2)` | Physical channel coordinates in micrometres, in the same channel order as `traces`. |
 | `fs_hz` | Scalar | Sampling frequency in Hz; use `30000.0`. |
 
-Use finite values, at least 100 time samples, and a common voltage scale across channels. Filtering and normalization are applied by the pipeline. For a larger probe, export a four-channel group and its matching coordinates.
+Use finite values, at least 100 time samples, and a common voltage scale across channels. Filtering and normalization are applied by the pipeline. Use the Python API for larger probes, or export a four-channel group and its matching coordinates for the CLI.
 
 For example, package existing trace and coordinate arrays:
 
@@ -132,7 +142,7 @@ np.savez(
 ### Run sorting
 
 ```bash
-python run.py --input recording.npz --components 22 --output output/recording-k22
+vanillasort --input recording.npz --components 22 --output output/recording-k22
 ```
 
 Set `--components` to the number of Gaussian mixture components, **K**, chosen for your recording. K must be at least 2, and the number of sortable events must be at least K. The bundled Hybrid Janelia settings use **22** for recordings **11/12** and **24** for **21/22/31/32**.
@@ -140,7 +150,7 @@ Set `--components` to the number of Gaussian mixture components, **K**, chosen f
 You can also supply separate `.npy` files:
 
 ```bash
-python run.py --input traces.npy --coords coords.npy --fs 30000 --components 22 --output output/recording-npy
+vanillasort --input traces.npy --coords coords.npy --fs 30000 --components 22 --output output/recording-npy
 ```
 
 An NPZ `fs_hz` value takes precedence over `--fs`; `--coords` takes precedence over coordinates stored in the NPZ.
@@ -148,10 +158,25 @@ An NPZ `fs_hz` value takes precedence over `--fs`; `--coords` takes precedence o
 To export spike detections alone:
 
 ```bash
-python run.py --input recording.npz --detect-only --output output/detections
+vanillasort --input recording.npz --detect-only --output output/detections
 ```
 
 ## Outputs
+
+### Python API outputs
+
+Passing `output_folder` saves the following alongside the returned `BaseSorting`:
+
+| Path | Content |
+| --- | --- |
+| `sorting/` | Sorting object reloadable with `spikeinterface.core.load()`. |
+| `events.npz` | Aligned `sample_index`, `unit_id`, and `segment_index` arrays. |
+| `segmentN_patchM.npz` | Detailed arrays for each segment and neighborhood. |
+| `run.json` | Parameters, channel geometry, model hashes, versions, and processing diagnostics. |
+
+Use `restored.register_recording(recording)` to associate a reloaded sorting with the original traces.
+
+### CLI outputs
 
 Each run writes two files:
 
@@ -199,6 +224,26 @@ print(dict(zip(units.tolist(), spike_counts.tolist())))
 
 Times are relative to the start of the supplied recording. Review putative units using their waveforms, firing rates, and inter-spike intervals. The `clustering` section of `run.json` records GMM convergence, warnings, template construction, and changes made during assignment refinement.
 
+## Models and caching
+
+The default model is `hybrid-janelia-2026.09`, hosted at [Kohaku2580/VanillaSort](https://huggingface.co/Kohaku2580/VanillaSort). Its immutable revision and SHA-256 hashes are recorded in [`default_model.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/configs/default_model.json). Every load verifies the checkpoint hashes.
+
+Download and verify the weights ahead of a run:
+
+```bash
+vanillasort --verify-only
+```
+
+The package uses the standard Hugging Face cache (`HF_HOME` / `HF_HUB_CACHE`). Set `VANILLASORT_MODEL_CACHE` to choose another Hub cache root. Once the cache is populated, `HF_HUB_OFFLINE=1` enables offline operation.
+
+For a local model:
+
+```python
+sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components=22)
+```
+
+A combined `.pt` contains `detector_state_dict`, `huidurep_state_dict`, and optionally `config`. A model directory contains `config.json` plus the two checkpoint files named by `detector_checkpoint` and `huidurep_checkpoint`. Model loading uses `weights_only=True` and strict architecture matching.
+
 ## Configuration
 
 Common command-line options:
@@ -206,6 +251,7 @@ Common command-line options:
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `--components K` | Required for sorting your data | Number of GMM components. |
+| `--model-path PATH` | Hugging Face default model | Use a local checkpoint bundle or directory. |
 | `--profile d1` | `d1` | Select `d1` or `canonical` preprocessing. |
 | `--seed 30` | `30` | Random seed for the run and its single GMM initialization. |
 | `--device auto` | `auto` | Select `auto`, `cpu`, `cuda`, or a device such as `cuda:0`. |
@@ -217,7 +263,7 @@ Common command-line options:
 
 CUDA out-of-memory handling halves the affected inference batch and retries. Filtering and normalization use the entire selected recording in host memory. Before processing, the runner checks for approximately `12 × input array bytes + 512 MiB` of available RAM; waveform and feature storage also grows with the event count.
 
-The profiles and model settings are defined in [`config.json`](config.json):
+The profiles and model settings are defined in [`configs/default.json`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/configs/default.json):
 
 | Setting | `d1` (default) | `canonical` |
 | --- | --- | --- |
@@ -229,31 +275,82 @@ The profiles and model settings are defined in [`config.json`](config.json):
 
 Both profiles use per-channel median/MAD normalization for detector input. Event-SNR gating uses the canonical 200–6,000 Hz signal. Processing a prefix with `--seconds` also fits normalization and clustering to that prefix. Keep `run.json` with your results to record these choices.
 
+## Model architecture
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/main/assets/architecture.jpg"><img src="https://raw.githubusercontent.com/IgarashiAkatuki/VanillaSort/main/assets/architecture.jpg" alt="VanillaSort architecture: VanillaDet detection, HuiduRep waveform representations, and VanillaCluster neuronal assignment" width="1000"></a>
+</p>
+
+**VanillaDet → HuiduRep → VanillaCluster.** The diagram shows detector training and event selection, waveform representation learning, and clustering with relative-amplitude features and template-guided reassignment.
+
 ## Method
 
-1. **VanillaDet — detect spikes.** A convolutional frontend and a six-layer local Transformer produce sample-level scores. The bundled model uses 256-dimensional hidden states, four attention heads, rotary positional encoding, and L2-normalized queries and keys. Peak selection applies a 12-sample exclusion radius. Events at or above the direct-acceptance threshold are retained; events between the two thresholds require a primary-channel SNR of at least 3 and an SNR of at least 2 on another channel.
+1. **VanillaDet — detect spikes.** A convolutional frontend and a six-layer local Transformer produce sample-level scores. The default model uses 256-dimensional hidden states, four attention heads, rotary positional encoding, and L2-normalized queries and keys. Peak selection applies a 12-sample exclusion radius. Events at or above the direct-acceptance threshold are retained; events between the two thresholds require a primary-channel SNR of at least 3 and an SNR of at least 2 on another channel.
 2. **HuiduRep — encode waveforms.** Each event contributes a 60-sample, four-channel waveform. Preprocessing standardizes each channel over events and time, interpolates to 90 samples, and repeats/crops channels to 11 inputs. HuiduRep applies internal denoising and produces a 32-dimensional representation, which is standardized across the recording's events.
 3. **VanillaCluster — assign units.** Three relative-amplitude features are formed from per-channel peak-to-peak amplitude fractions, projected onto a Helmert contrast basis, and standardized. A full-covariance GMM clusters the resulting 35-dimensional vectors. One template-residual refinement pass then updates assignments among the top three candidate components.
 
 Template refinement splits events into alternating one-second blocks. For each target fold, templates are built from the opposite fold using events with GMM posterior probability of at least 0.9. Each core pool is capped at 512 events, then its lowest-scoring 25% by detector score is removed. A valid template requires at least 30 retained events and nonzero energy. Residual fitting searches shifts of ±2 samples and shared amplitude scales from 0.5 to 2.0; event timestamps are preserved. Events with insufficient template support retain their GMM assignments.
 
+## Results
+
+The [paper's Tables 1–2](https://www.biorxiv.org/content/10.64898/2026.09.18.752552) report results on **Hybrid Janelia Static and Drift**, with nine recordings per subset and ground-truth units with SNR ≥ 3. Sorting accuracy is `TP / (TP + FP + FN)`, with event matching within ±6 samples. Values below are **mean ± SEM**; higher is better.
+
+| Spike sorter | Static accuracy | Drift accuracy |
+| --- | ---: | ---: |
+| HerdingSpikes2 | 0.35 ± 0.01 | 0.29 ± 0.01 |
+| IronClust | 0.57 ± 0.04 | 0.54 ± 0.03 |
+| JRClust | 0.47 ± 0.04 | 0.35 ± 0.03 |
+| KiloSort | 0.60 ± 0.02 | 0.51 ± 0.02 |
+| KiloSort2 | 0.39 ± 0.03 | 0.30 ± 0.02 |
+| KiloSort4 | 0.40 ± 0.03 | 0.34 ± 0.02 |
+| MountainSort4 | 0.59 ± 0.02 | 0.36 ± 0.02 |
+| MountainSort5 | 0.40 ± 0.06 | 0.33 ± 0.04 |
+| SpykingCircus | 0.57 ± 0.01 | 0.48 ± 0.02 |
+| Tridesclous | 0.54 ± 0.03 | 0.37 ± 0.02 |
+| SimSort | 0.62 ± 0.04 | 0.56 ± 0.03 |
+| HuiduRep (without DAE) | 0.69 ± 0.02 | 0.56 ± 0.02 |
+| HuiduRep (with DAE) | 0.70 ± 0.02 | 0.60 ± 0.02 |
+| **VanillaSort (without DAE)** | **0.73 ± 0.02** | 0.61 ± 0.02 |
+| **VanillaSort (with DAE)** | **0.73 ± 0.01** | **0.64 ± 0.02** |
+
+DAE denotes a denoising autoencoder. Other-tool scores are the SpikeForest or original-publication results used in the paper.
+
+- **Detection:** VanillaDet achieves 0.74/0.71 accuracy on Static/Drift, compared with SimSort's 0.72/0.68 and amplitude thresholding's 0.61/0.60.
+- **Sorting:** VanillaSort improves accuracy over the corresponding HuiduRep baselines by **3–4 percentage points on Static** and **4–5 points on Drift** (paired Wilcoxon test, *p* < 0.05).
+
 ## Research and development
 
-- Extend the detector in [`detector_model.py`](detector_model.py) or the waveform representation models in [`huidurep/`](huidurep/), using checkpoints that match the model architecture.
-- Configure inference experiments in [`config.json`](config.json); preprocessing, event selection, and clustering are implemented in [`run.py`](run.py) and [`frozen_ops.py`](frozen_ops.py).
-- After changes, run the [synthetic quick start](#quick-start). Keep each experiment's `run.json` alongside its outputs to record parameters, random seeds, dependency versions, and checkpoint hashes.
+Develop the package and research methods on `main`:
+
+```bash
+git clone --branch main https://github.com/IgarashiAkatuki/VanillaSort.git
+cd VanillaSort
+python -m pip install -e ".[dev]"
+pytest
+```
+
+The tests use small synthetic recordings and locally generated model weights. Numerical reference versions are recorded in [`requirements.txt`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/requirements.txt); the package's runtime dependencies are declared in [`pyproject.toml`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/pyproject.toml).
+
+Extend VanillaDet in `src/vanillasort/models/detector.py`, HuiduRep in `src/vanillasort/models/huidurep/`, and inference experiments in `src/vanillasort/pipeline.py` and `src/vanillasort/configs/default.json`. Use checkpoints that match the model architecture. Run the synthetic quick start after changes and keep each experiment's `run.json` with its outputs.
+
+See the [0.2.0 release notes](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/CHANGELOG.md) and [runtime measurements](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/performance-pr4832.md) for the local-attention optimization and its numerical checks.
+
+Maintainers can follow the [release process](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/releasing.md) to publish a version through GitHub Actions.
 
 ## Repository layout
 
 | Path | Role |
 | --- | --- |
-| [`run.py`](run.py) | CLI, input loading, preprocessing, inference, clustering, and export. |
-| [`detector_model.py`](detector_model.py) | VanillaDet convolutional frontends, attention layers, and prediction head. |
-| [`huidurep/`](huidurep/) | HuiduRep encoder, decoders, projection modules, and the `CMAES` model class. |
-| [`frozen_ops.py`](frozen_ops.py) | Numerical operations for event selection, waveform preparation, amplitude features, and template refinement. |
-| [`config.json`](config.json) | Model architectures, profiles, thresholds, and clustering settings. |
-| [`checkpoints/`](checkpoints/) | `detector_mask_r4_best_ap.pt` and `HuiduRep.pt`. |
-| [`requirements.txt`](requirements.txt) | Reference versions of the numerical dependencies for reproducing the original environment. |
+| [`pyproject.toml`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/pyproject.toml) | Package metadata, runtime and development dependencies, CLI. |
+| [`src/vanillasort/api.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/api.py) | Public `sort()` API, recording access and BaseSorting output. |
+| [`src/vanillasort/models/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/main/src/vanillasort/models/) | Canonical VanillaDet and HuiduRep models, including training methods. |
+| [`src/vanillasort/pipeline.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/pipeline.py) / [`ops.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/ops.py) | Published preprocessing, detection, embeddings, amplitude features, GMM and template refinement. |
+| [`src/vanillasort/geometry.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/geometry.py) | Local probe neighborhoods and overlap suppression. |
+| [`src/vanillasort/checkpoints.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/checkpoints.py) | Model resolution and strict checkpoint loading. |
+| [`src/vanillasort/configs/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/main/src/vanillasort/configs/) | Inference settings and pinned Hugging Face model registry; weights are cached separately. |
+| [`src/vanillasort/cli.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/src/vanillasort/cli.py) / [`run.py`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/run.py) | CLI and compatibility launcher. |
+| [`tests/`](https://github.com/IgarashiAkatuki/VanillaSort/tree/main/tests/) | Small synthetic tests using locally generated tiny checkpoints. |
+| [`requirements.txt`](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/requirements.txt) | Historical numerical versions for reproduction comparisons. |
 
 ## Citation
 
@@ -274,4 +371,4 @@ Zishuo Feng and Feng Cao. **Spike Sorting with VanillaSort.** bioRxiv, 2026. [do
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE).
+[GNU Affero General Public License v3.0](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/LICENSE).
