@@ -547,6 +547,38 @@ def apply_rotary_embedding(
     return rotated.flatten(-2)
 
 
+def _local_attention(query, key, value, window, causal, key_padding_mask):
+    """Evaluate the same local mask using bounded query tiles and key halos.
+
+    RoPE and Q/K normalization have already been applied to the full sequence.
+    Each query retains every key permitted by the original mask, including
+    across tile boundaries. No recording chunks or receptive fields change.
+    """
+    length = query.shape[-2]
+    outputs = []
+    for start in range(0, length, 256):
+        end = min(start + 256, length)
+        left = max(0, start - window)
+        right = end if causal else min(length, end + window)
+        rows = torch.arange(start, end, device=query.device)[:, None]
+        columns = torch.arange(left, right, device=query.device)[None, :]
+        allowed = (rows - columns).abs() <= window
+        if causal:
+            allowed = allowed & (columns <= rows)
+        if key_padding_mask is not None:
+            allowed = allowed[None, None] & ~key_padding_mask[:, None, None, left:right].bool()
+        outputs.append(
+            F.scaled_dot_product_attention(
+                query[..., start:end, :],
+                key[..., left:right, :],
+                value[..., left:right, :],
+                attn_mask=allowed,
+                dropout_p=0.0,
+            )
+        )
+    return torch.cat(outputs, dim=-2)
+
+
 class RotarySelfAttention(nn.Module):
     """Multi-head self-attention with rotary query/key position encoding."""
 
@@ -613,6 +645,8 @@ class RotarySelfAttention(nn.Module):
         x: torch.Tensor,
         disallowed_mask: torch.Tensor | None,
         key_padding_mask: torch.Tensor | None,
+        local_window: int | None = None,
+        causal: bool = False,
     ) -> torch.Tensor:
         batch, length, _ = x.shape
         if length > self.rope_cos.shape[0]:
@@ -638,13 +672,16 @@ class RotarySelfAttention(nn.Module):
                 allowed_mask = key_allowed[:, None, None, :]
             else:
                 allowed_mask = allowed_mask[None, None] & key_allowed[:, None, None, :]
-        attended = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            attn_mask=allowed_mask,
-            dropout_p=self.dropout if self.training else 0.0,
-        )
+        if local_window is not None:
+            attended = _local_attention(query, key, value, local_window, causal, key_padding_mask)
+        else:
+            attended = F.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=allowed_mask,
+                dropout_p=self.dropout if self.training else 0.0,
+            )
         attended = attended.transpose(1, 2).reshape(batch, length, self.d_model)
         return self.out_proj(attended)
 
@@ -682,10 +719,12 @@ class RotaryTransformerEncoderLayer(nn.Module):
         x: torch.Tensor,
         disallowed_mask: torch.Tensor | None,
         key_padding_mask: torch.Tensor | None,
+        local_window: int | None = None,
+        causal: bool = False,
     ) -> torch.Tensor:
         normalized = self.norm1(x)
         x = x + self.dropout1(
-            self.self_attn(normalized, disallowed_mask, key_padding_mask)
+            self.self_attn(normalized, disallowed_mask, key_padding_mask, local_window, causal)
         )
         normalized = self.norm2(x)
         feedforward = self.linear2(self.dropout(F.gelu(self.linear1(normalized))))
@@ -723,9 +762,11 @@ class RotaryTransformerEncoder(nn.Module):
         x: torch.Tensor,
         disallowed_mask: torch.Tensor | None,
         key_padding_mask: torch.Tensor | None,
+        local_window: int | None = None,
+        causal: bool = False,
     ) -> torch.Tensor:
         for layer in self.layers:
-            x = layer(x, disallowed_mask, key_padding_mask)
+            x = layer(x, disallowed_mask, key_padding_mask, local_window, causal)
         return x
 
 
@@ -900,12 +941,23 @@ class SpikeDetector(nn.Module):
             src_key_padding_mask = ~time_valid_mask.bool()
 
         if self.num_layers > 0:
-            attn_mask = self._get_attn_mask(L, x.device)
+            # Training/gradient extraction retain the original dense path and
+            # dropout. Long rotary inference avoids the quadratic dense mask.
+            use_local = (
+                self.positional_encoding_type == "rotary"
+                and not self.training
+                and not torch.is_grad_enabled()
+                and self.local_window >= 0
+                and L > 2 * self.local_window + 256
+            )
+            attn_mask = None if use_local else self._get_attn_mask(L, x.device)
             if self.positional_encoding_type == "rotary":
                 x = self.transformer_encoder(
                     x,
                     disallowed_mask=attn_mask,
                     key_padding_mask=src_key_padding_mask,
+                    local_window=self.local_window if use_local else None,
+                    causal=self.causal,
                 )
             else:
                 x = self.transformer_encoder(

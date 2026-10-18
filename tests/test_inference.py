@@ -23,7 +23,7 @@ def test_import():
     )
 
 
-def test_sort_roundtrip(recording, tiny_model, tmp_path):
+def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys):
     rng_before = torch.get_rng_state().clone()
     threads = torch.get_num_threads()
     folder = tmp_path / "result"
@@ -60,6 +60,7 @@ def test_sort_roundtrip(recording, tiny_model, tmp_path):
     np.testing.assert_array_equal(again.to_spike_vector(), spikes)
     assert torch.equal(rng_before, torch.get_rng_state())
     assert torch.get_num_threads() == threads
+    assert capsys.readouterr().out == ""
     with pytest.raises(ValueError, match="new or empty"):
         vanillasort.sort(recording, output_folder=folder)
 
@@ -127,6 +128,65 @@ def test_checkpoint_directory_and_training(tiny_model, tmp_path):
     assert detector.head.mlp[-1].weight.grad is not None
     for key, value in bundle["huidurep_state_dict"].items():
         torch.testing.assert_close(encoder.state_dict()[key], value)
+
+
+def test_local_attention_matches_dense(tiny_model):
+    from vanillasort.checkpoints import load_detector
+
+    config, _ = resolve_model(model_path=tiny_model)
+    config["detector_architecture"]["local_window"] = 32
+    # Cross several query tiles, including a partial tail and padded keys.
+    x = torch.randn(2, 763, 4)
+    valid = torch.ones(2, 763, dtype=torch.bool)
+    valid[0, :17] = False
+    valid[0, -31:] = False
+    valid[1] = False
+    for causal in (False, True):
+        config["detector_architecture"]["causal"] = causal
+        detector = load_detector(config, "cpu")
+        with torch.inference_mode():
+            actual = detector(x, time_valid_mask=valid)
+        assert not detector._mask_cache  # inference never constructs a dense mask
+        # Gradient-enabled evaluation retains the original dense attention path.
+        expected = detector(x, time_valid_mask=valid)
+        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
+        expected.sum().backward()
+        assert detector.transformer_encoder.layers[0].self_attn.qkv.weight.grad is not None
+
+
+def test_progress_and_repeated_memory_retry(recording, tiny_model, tmp_path, monkeypatch, capsys):
+    from vanillasort import pipeline
+
+    original = pipeline.infer_candidates
+    requested_batches = []
+
+    def limited_inference(model, signal, coords, config, device, batch_size, verbose):
+        requested_batches.append(batch_size)
+        forward = model.forward
+
+        def limited_forward(x, *args):
+            if len(x) > 2:
+                raise torch.cuda.OutOfMemoryError("Simulated small GPU")
+            return forward(x, *args)
+
+        model.forward = limited_forward
+        return original(model, signal, coords, config, device, batch_size, verbose)
+
+    monkeypatch.setattr(pipeline, "infer_candidates", limited_inference)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    folder = tmp_path / "progress"
+    vanillasort.sort(recording, model_path=tiny_model, components=2, device="cpu", output_folder=folder)
+    assert requested_batches == [8, 2]
+    progress = capsys.readouterr().out
+    for text in ("Segment 1/2", "neighborhood 1/1", "CUDA memory limit", "100.0%", "Completed neighborhood"):
+        assert text in progress
+    runs = json.loads((folder / "run.json").read_text())["runs"]
+    assert len(runs[0]["detector"]["oom_retries"]) == 2
+    assert runs[1]["detector"]["oom_retries"] == []
+    for run in runs:
+        assert all(
+            run["timings_seconds"][stage] > 0 for stage in ("preprocessing", "detection", "embedding", "clustering")
+        )
 
 
 def test_hub_cache_and_integrity(monkeypatch, tmp_path):

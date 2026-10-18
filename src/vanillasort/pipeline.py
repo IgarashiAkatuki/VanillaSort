@@ -7,6 +7,7 @@ network access, original repository, training dataset or NAS is required.
 from __future__ import annotations
 
 import gc
+import time
 import warnings
 
 import numpy as np
@@ -19,6 +20,28 @@ import torch
 
 from . import ops
 from .checkpoints import load_detector, load_huidurep
+
+
+class _Progress:
+    """Time-throttled, flushed progress for long inference stages."""
+
+    def __init__(self, stage, total, verbose, unit):
+        self.stage, self.total, self.verbose, self.unit = stage, total, verbose, unit
+        self.started = self.last_report = time.perf_counter()
+        if verbose:
+            print(f"{stage}: 0/{total:,} {unit}", flush=True)
+
+    def update(self, completed):
+        now = time.perf_counter()
+        if self.verbose and (now - self.last_report >= 5 or completed == self.total):
+            elapsed = now - self.started
+            remaining = elapsed * (self.total - completed) / completed
+            print(
+                f"{self.stage}: {completed:,}/{self.total:,} {self.unit} "
+                f"({100 * completed / self.total:.1f}%), {elapsed:.1f}s elapsed, ETA {remaining:.1f}s",
+                flush=True,
+            )
+            self.last_report = now
 
 
 def validate_input(raw, coords, fs_hz):
@@ -51,11 +74,12 @@ def normalize(signal):
 
 
 @torch.inference_mode()
-def infer_candidates(model, signal, coords, config, device, batch_size=8):
+def infer_candidates(model, signal, coords, config, device, batch_size=8, verbose=False):
     """Original chunk-local peaks/NMS then global NMS, before threshold/SNR gate."""
     start, chunk = 0, config["chunk_len"]
     times, scores, retries = [], [], []
     initial_batch = batch_size
+    progress = _Progress("Detector", len(signal), verbose, "samples")
     while start < len(signal):
         remaining = len(signal) - start
         count = min(batch_size, remaining // chunk)
@@ -78,6 +102,8 @@ def infer_candidates(model, signal, coords, config, device, batch_size=8):
             if count <= 1:
                 raise RuntimeError("One detector chunk does not fit: retry with --device cpu") from None
             batch_size = max(1, count // 2)
+            if verbose:
+                print(f"Detector: CUDA memory limit; retrying with batch_size={batch_size}", flush=True)
             continue
         for j, p in enumerate(probability):
             local = ops.detect_spikes_from_prob_vectorized(
@@ -86,6 +112,7 @@ def infer_candidates(model, signal, coords, config, device, batch_size=8):
             times.append(local + start + j * length)
             scores.append(p[local])
         start = end
+        progress.update(start)
         del x, c, logits, probability
     times, scores, removed = ops.global_refractory_nms(
         np.concatenate(times), np.concatenate(scores), config["refractory_samples"], len(signal)
@@ -104,8 +131,9 @@ def infer_candidates(model, signal, coords, config, device, batch_size=8):
 
 
 @torch.inference_mode()
-def embeddings(model, inputs, device, batch_size=128):
+def embeddings(model, inputs, device, batch_size=128, verbose=False):
     start, output, retries = 0, [], []
+    progress = _Progress("HuiduRep", len(inputs), verbose, "waveforms")
     decoder_calls = [0]
 
     def hook(module, args, value):
@@ -134,9 +162,12 @@ def embeddings(model, inputs, device, batch_size=128):
                 if count <= 1:
                     raise RuntimeError("One embedding does not fit: retry with --device cpu") from None
                 batch_size = max(1, count // 2)
+                if verbose:
+                    print(f"HuiduRep: CUDA memory limit; retrying with batch_size={batch_size}", flush=True)
                 continue
             start += count
             successful += 1
+            progress.update(start)
             del x, values
     finally:
         handle.remove()
@@ -267,6 +298,8 @@ def run_pipeline(
     verbose=True,
     owner_channels=None,
 ):
+    started = time.perf_counter()
+    timings = {}
     validate_input(raw, coords, fs)
     raw = np.asarray(raw, dtype=np.float32)
     coords = np.asarray(coords, dtype=np.float32)
@@ -281,8 +314,13 @@ def run_pipeline(
     else:
         physical = filtered_signal(raw, fs, p["filter"])
         detector_signal, detector_norm = normalize(physical)
+    timings["preprocessing"] = time.perf_counter() - started
+    stage_started = time.perf_counter()
     model = load_detector(config, device)
-    times, values, det_audit = infer_candidates(model, detector_signal, coords, config, device, detector_batch)
+    times, values, det_audit = infer_candidates(
+        model, detector_signal, coords, config, device, detector_batch, verbose=verbose
+    )
+    timings["detection"] = time.perf_counter() - stage_started
     del model, detector_signal
     gc.collect()
     if device.type == "cuda":
@@ -323,11 +361,13 @@ def run_pipeline(
         gate_normalization=gate_norm,
         ownership_removed=ownership_removed,
         ground_truth_used=False,
+        timings_seconds=timings,
     )
     if verbose:
         print(f"Detector: {len(pred)} accepted events", flush=True)
     del canonical, times, values, snrs
     if detect_only:
+        timings["total"] = time.perf_counter() - started
         return arrays, audit
     keep = (pred >= 30) & (pred < len(raw) - 30)
     samples, scores = pred[keep], scores[keep]
@@ -336,7 +376,9 @@ def run_pipeline(
             samples=samples, scores=scores, labels=np.empty(0, np.int32), initial_labels=np.empty(0, np.int32)
         )
         audit.update(sorting_events=0, clustering_status="no_complete_waveform_candidates")
+        timings["total"] = time.perf_counter() - started
         return arrays, audit
+    stage_started = time.perf_counter()
     waves = physical[samples[:, None] + np.arange(-30, 30)]
     # Preserve physical channel identities for the BaseSorting adapter.
     amplitudes = np.ptp(waves, axis=1)
@@ -356,14 +398,17 @@ def run_pipeline(
     model = load_huidurep(config, device)
     if verbose:
         print(f"HuiduRep: {len(samples)} waveforms; denoise ON", flush=True)
-    features, embed_audit = embeddings(model, inputs, device, embedding_batch)
+    features, embed_audit = embeddings(model, inputs, device, embedding_batch, verbose=verbose)
+    timings["embedding"] = time.perf_counter() - stage_started
     del model, inputs
     gc.collect()
     if device.type == "cuda":
         torch.cuda.empty_cache()
     if verbose:
         print(f"VanillaCluster: K={components}, seed={seed}", flush=True)
+    stage_started = time.perf_counter()
     result, cluster_audit = cluster(features, auxiliary, padded, ids, samples, scores, fs, components, seed, config)
+    timings["clustering"] = time.perf_counter() - stage_started
     arrays.update(samples=samples, scores=scores, features=features, auxiliary=auxiliary, **result)
     arrays["main_channel_indices"] = np.array(
         [
@@ -388,4 +433,12 @@ def run_pipeline(
             else "canonical filtered signal with global MAD"
         ),
     )
+    timings["total"] = time.perf_counter() - started
+    if verbose:
+        print(
+            f"Completed neighborhood in {timings['total']:.1f}s "
+            f"(preprocessing {timings['preprocessing']:.1f}s, detection {timings['detection']:.1f}s, "
+            f"embedding {timings['embedding']:.1f}s, clustering {timings['clustering']:.1f}s)",
+            flush=True,
+        )
     return arrays, audit

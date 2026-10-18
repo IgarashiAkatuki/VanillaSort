@@ -105,6 +105,10 @@ K applies to each neighborhood and segment. A nonempty neighborhood needs at lea
 
 **Memory:** traces are read in blocks of at most 300,000 samples for one four-channel neighborhood at a time. Exact filtering and median/MAD normalization require a complete segment in RAM, with an initial memory check. Waveform storage grows with the event count. CUDA memory errors trigger retries with smaller inference batches.
 
+**Runtime and progress (development version):** each neighborhood runs a complete detector pass, so runtime grows with the number of neighborhoods as well as recording duration. The standard 64-channel, two-column synthetic probe produces 62 neighborhoods. `verbose=True` reports the selected device, neighborhood count, and detection/embedding progress approximately every five seconds (after a batch completes). Per-neighborhood stage timings are saved in `run.json` under `runs[].timings_seconds`. The updated SpikeInterface wrapper echoes progress to the terminal and retains it in `sorter_output/vanillasort.log`; `spikeinterface_log.json` is finalized after sorting ends.
+
+Long rotary-detector inference uses local attention tiles with the original receptive field and checkpoints. CPU API sorting uses up to eight PyTorch threads, respecting a smaller caller limit and restoring that limit afterward. CUDA batch reductions carry over to later neighborhoods in the same sort. Larger probes can still take substantial time; GPU utilization alone does not show which stage is running. With both development checkouts installed, [this reproduction script](examples/reproduce_si_4832.py) runs the 64-channel, 60-second example using a fixed input seed and reusable recording cache.
+
 ## Command-line usage
 
 ### Prepare the input

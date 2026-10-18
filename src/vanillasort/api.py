@@ -101,6 +101,13 @@ def sort(
         raise ValueError("Supported devices are cpu and cuda")
     if resolved_device.type == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA is unavailable; use device='cpu'")
+    if verbose:
+        print(
+            f"VanillaSort: device={resolved_device}, {recording.get_num_channels()} channels, "
+            f"{recording.get_num_segments()} segments, {len(patches)} neighborhoods per segment",
+            flush=True,
+        )
+        print("Resolving model checkpoints (the first run may download weights)", flush=True)
     config, model_info = resolve_model(model, model_path)
     if profile not in config["profiles"]:
         raise ValueError(f"Unknown profile {profile!r}")
@@ -111,12 +118,15 @@ def sort(
     times_list, labels_list, main_channels, audit_runs = [], [], {}, []
     next_unit = 0
     old_threads = torch.get_num_threads()
+    inference_threads = min(8, old_threads)
     cuda_devices = []
     if resolved_device.type == "cuda":
         cuda_devices = [resolved_device.index if resolved_device.index is not None else torch.cuda.current_device()]
     try:
         # Restore caller RNG and threading settings, even when inference fails.
-        torch.set_num_threads(2)
+        # Bound oversubscription without forcing larger CPU hosts to two threads.
+        # Respect a smaller caller limit, and restore it after this sort.
+        torch.set_num_threads(inference_threads)
         with torch.random.fork_rng(devices=cuda_devices):
             torch.random.default_generator.manual_seed(int(seed))
             if cuda_devices:
@@ -128,6 +138,13 @@ def sort(
                     raise ValueError("Each segment must have at least 100 samples")
                 samples_parts, labels_parts, scores_parts, patch_parts = [], [], [], []
                 for patch_index, (channels, owners) in enumerate(patches):
+                    if verbose:
+                        print(
+                            f"Segment {segment + 1}/{recording.get_num_segments()}, "
+                            f"neighborhood {patch_index + 1}/{len(patches)}, "
+                            f"channels={channel_ids[channels].tolist()}, {time.perf_counter() - started:.1f}s elapsed",
+                            flush=True,
+                        )
                     required = 12 * frames * 4 * np.dtype("float32").itemsize + 512 * 2**20
                     if psutil.virtual_memory().available < required:
                         raise MemoryError(
@@ -162,6 +179,11 @@ def sort(
                         owner_channels=owner_local,
                     )
                     del raw
+                    # Keep successful CUDA batch reductions for later neighborhoods
+                    # instead of repeatedly provoking the same out-of-memory error.
+                    detector_batch = audit["detector"]["final_batch_size"]
+                    if "embedding" in audit:
+                        embedding_batch = audit["embedding"]["final_batch_size"]
                     local_units = np.unique(arrays["labels"])
                     for unit in local_units:
                         main_channels[next_unit + int(unit)] = channel_ids[
@@ -222,6 +244,7 @@ def sort(
             components=int(components),
             profile=profile,
             device=str(resolved_device),
+            torch_num_threads=inference_threads,
             channel_ids=channel_ids.tolist(),
             channel_locations=locations.tolist(),
             segments=recording.get_num_segments(),
