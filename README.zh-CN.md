@@ -393,7 +393,7 @@ pytest
 
 在 `src/vanillasort/models/detector.py` 中扩展 VanillaDet，在 `src/vanillasort/models/huidurep/` 中修改 HuiduRep，通过 `src/vanillasort/pipeline.py` 和 `src/vanillasort/configs/default.json` 开展推理实验。使用与模型结构匹配的权重；修改后运行合成数据快速检查，并将每次实验的 `run.json` 与结果一起保存。
 
-局部注意力优化及数值一致性检查见 [0.2.0 更新说明](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/CHANGELOG.md)与[运行时间测量](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/performance-pr4832.md)。
+可配置 gating、固定 K 后处理和可选 cover 邻域见 [0.2.1 更新说明](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/CHANGELOG.md)。[运行时间测量](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/performance-pr4832.md)记录了 0.2.0 引入的局部注意力优化及数值一致性检查。
 
 维护者可按[发布流程](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/releasing.md)通过 GitHub Actions 发布版本。
 
