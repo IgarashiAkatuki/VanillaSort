@@ -11,7 +11,7 @@ The PyPI Trusted Publisher for `vanillasort` uses:
 | Workflow | `publish.yml` |
 | Environment | `pypi` |
 
-Before creating a release tag, update the version in `pyproject.toml` and `src/vanillasort/__init__.py`, then validate the distributions:
+Before creating a release tag, update the version in `pyproject.toml` and `src/vanillasort/__init__.py`, document the changes and compatibility notes in `CHANGELOG.md`, then validate the distributions:
 
 ```bash
 python -m pip install -e ".[dev]" build twine
@@ -22,6 +22,6 @@ python -m pip install --force-reinstall --no-deps dist/*.whl
 pytest -q
 ```
 
-Commit the release changes on `main` and push a matching version tag, such as `v0.2.0`. The [publishing workflow](../.github/workflows/publish.yml) checks the tag, builds the wheel and source distribution, tests the installed wheel, and publishes through PyPI Trusted Publishing.
+Commit the release changes on `main` and push a matching version tag, such as `v0.2.1`. The [publishing workflow](../.github/workflows/publish.yml) checks the tag, builds the wheel and source distribution, tests the installed wheel, and publishes through PyPI Trusted Publishing. Create a GitHub release for the tag using the corresponding changelog entry.
 
 After the workflow succeeds, verify the new version on [PyPI](https://pypi.org/project/vanillasort/) and install it in a fresh environment. Pretrained weights are downloaded from the immutable Hugging Face revision in `src/vanillasort/configs/default_model.json` on first inference.
