@@ -2,6 +2,11 @@
 
 ## 0.2.1 — 2026-10-19
 
+Release the detector-gating and fixed-K postprocessing changes from
+[`9eaa1a7`](https://github.com/IgarashiAkatuki/VanillaSort/commit/9eaa1a761e118ce5db3603772e7ce6b435ba04b7).
+
+### Added and changed
+
 - Expose detector selection settings in `vanillasort.sort()`: `enable_gate`,
   `threshold`, `direct_keep`, `primary_snr`, `secondary_snr`, and
   `min_secondary_channels`. Add corresponding CLI flags, including `--no-gate`.
@@ -38,6 +43,8 @@
   logs contain the callable name, so reproduction also requires its code and
   captured parameters. Document the new options and examples in both READMEs.
 
+### Compatibility
+
 Existing calls retain their default gate, thresholds, dense neighborhoods, and
 disabled fixed-K postprocessing. `threshold` and `direct_keep` are independent:
 when `threshold >= direct_keep`, every eligible event bypasses the built-in SNR
@@ -45,10 +52,19 @@ check. Custom functions require `enable_gate=True` and are available through the
 Python API only. SpikeInterface `run_sorter()` wrappers must expose the new API
 options separately before forwarding them.
 
-Validation: all 16 tests pass. With real checkpoints, default inference and an
-equivalent custom gate match the frozen 0.2.0 arrays exactly. An eight-channel,
+### Validation
+
+All 16 tests pass against both the source and installed wheel, covering
+inference, gating, fixed-K postprocessing, and probe coverage. The wheel and
+source distribution pass `twine check --strict` and contain no pretrained
+weights. A CPU self-test with the pinned models produces 447 accepted detections
+and 446 sorted events.
+
+Development regression checks with real checkpoints showed that default
+inference and an equivalent custom gate matched the frozen 0.2.0 arrays exactly.
+An eight-channel,
 60-second run with `threshold=0.139`, gating disabled, and `target_units=10`
-matches the previous output exactly: 10 units and 6,526 spikes. These are
+matched the previous output exactly: 10 units and 6,526 spikes. These are
 regression checks, not a general accuracy or runtime guarantee.
 
 ## 0.2.0 — 2026-10-18
