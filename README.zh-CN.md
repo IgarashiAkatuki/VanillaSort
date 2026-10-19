@@ -91,21 +91,75 @@ restored = load("output/recording/sorting")
 | 参数 | 默认值 | 用途 |
 | --- | --- | --- |
 | `components` | `22` | GMM 组分数 K；根据记录选择 K ≥ 2。 |
+| `target_units` | `None` | 可选的固定 K 后处理，约束每个 segment 的输出单元数。 |
+| `postprocessing` | `None` | 固定 K 后处理的阈值和不足 K 时的处理策略，见下文。 |
+| `neighborhood_mode` | `"dense"` | 保留原始密集邻域；显式选择 `"cover"` 可减少 detector 重复推理。 |
 | `output_folder` | `None` | 将结果保留在内存，或保存到新建/空目录。 |
 | `device` | `"auto"` | 优先使用 CUDA，否则使用 CPU；也可指定 `"cpu"` 或 `"cuda:0"`。 |
 | `seed` | `0` | 可复现的初始化；CLI 默认值为 `30`。 |
 | `profile` | `"d1"` | 选择 `"d1"` 或 `"canonical"` 预处理。 |
+| `enable_gate` | `True` | 启用内置 SNR 门控，或传入的自定义门控。 |
+| `threshold` | `None` | 最低 detector 分数；None 使用模型 profile 默认值（d1：0.039）。 |
+| `gate_fn` | `None` | 自定义 `gate_fn(context)`，返回布尔保留掩码，替代内置门控。 |
+| `direct_keep` | `None` | 内置门控的分数直通阈值；使用模型 profile 默认值（d1：0.045）。 |
+| `primary_snr`、`secondary_snr` | `None`、`None` | 内置事件 SNR 下限；使用模型默认值（3、2）。 |
+| `min_secondary_channels` | `None` | 满足次通道 SNR 的额外通道数，1–3；模型默认值为 1。 |
 | `model`、`model_path` | `"default"`、`None` | 使用预训练模型或本地权重。 |
 | `detector_batch`、`embedding_batch` | `8`、`128` | 推理批大小。 |
 | `verbose` | `True` | 打印进度。 |
 
 K 分别用于每个邻域和 segment。非空邻域需要至少 K 个可分选事件；检测结果为空时返回空 sorting。
 
-**较大探针：** 实验性适配器构建四近邻，遵守 group/shank 边界，并在 12 个采样点范围内对重叠检测去重。各 segment 使用独立单元 ID。漂移校正、跨邻域和跨 segment 单元匹配仍待实现；漂移单元可能被拆分，相近的同时事件可能被抑制。
+**检测阈值与门控：** 峰值选择和不应期 NMS 后，候选事件首先需要满足 `score >= threshold`。启用内置门控时，`score >= direct_keep` 的事件直接通过；其余事件要求最强通道 SNR 达到 `primary_snr`，并有至少 `min_secondary_channels` 个其他通道达到 `secondary_snr`。这里的 SNR 是 canonical 滤波和 MAD 归一化信号上的逐事件负峰幅度估计，不是 GT unit 的 SNR。`threshold` 是 [0, 1] 内的 sigmoid 分数阈值，不是电压阈值。参数为 `None` 时沿用加载模型的配置。
+
+例如，关闭 SNR 门控并设置检测分数阈值：
+
+```python
+sorting = vanillasort.sort(recording, components=10, threshold=0.139, enable_gate=False)
+```
+
+`threshold` 与 `direct_keep` 相互独立：当 `threshold >= direct_keep` 时，所有通过 threshold 的事件都会绕过内置 SNR 检查。如果提高 threshold 后仍要检查部分事件的 SNR，也需要提高 `direct_keep`，例如 `threshold=0.139, direct_keep=0.2`。这些数值仅为用法示例，没有改变默认配置。
+
+自定义函数会替代整个内置 SNR 规则，包括高分直通逻辑：
+
+```python
+import numpy as np
+
+def my_gate(events):
+    ranked = np.sort(events.snrs, axis=1)
+    return (events.scores >= 0.2) | ((ranked[:, -1] >= 3) & (ranked[:, -2] >= 2))
+
+sorting = vanillasort.sort(
+    recording, components=10, threshold=0.139,
+    enable_gate=True, gate_fn=my_gate,
+)
+```
+
+回调输入为 `vanillasort.gating.GateContext`，每个 segment/邻域在存在通过 threshold 的候选时调用一次。只读 CPU 数组包括 `samples` (N,)、`scores` (N,)、`snrs` (N, 4)、`channel_ids` (4,) 和 `channel_locations` (4, 2)。时间是相对当前 segment 起点的采样点编号；通道顺序保持一致。另有 `fs_hz`、`segment_index`、`neighborhood_index`、`profile`、`event_snr_radius`（采样点数）等信息。返回值必须是长度 N 的布尔数组或列表，True 表示保留；整数掩码、形状错误及回调异常都会中止运行。没有候选时跳过回调。支持普通函数、闭包和可调用对象；同时设置 `enable_gate=False` 与 `gate_fn` 会报错。
+
+门控之后仍会执行主通道归属筛选、跨邻域去重和波形边界检查。自定义门控只能筛除候选，不能恢复已被 threshold、峰值选择或 NMS 排除的事件。实际参数保存在 `run.json` 的 `gating` 和 `sorting.get_annotation("detection_gate")` 中；`runs[].gating` 记录各邻域在归属筛选之前的计数。`config` 保留原始模型配置。日志只记录回调名称，复现实验时请另行保留函数代码及闭包参数。这些新参数用于直接调用 `vanillasort.sort()`，SpikeInterface 的 `run_sorter()` wrapper 需要另行暴露参数才能转发。
+
+**较大探针：** 默认保留原始密集四近邻及其归属（`"dense"`）。显式设置 `neighborhood_mode="cover"`，可确定性地选取覆盖全部通道的邻域子集，遵守 group/shank 边界。每个通道都作为实际输入，并且只归属一个所选邻域，不要求每个通道都当邻域中心，从而减少整段数据的重复 detector 推理。剩余重叠检测仍在 12 个采样点范围内去重。稀疏覆盖改变了 detector 的通道上下文，实测可能降低精度，因此保留为可选模式。各 segment 的单元 ID 独立，漂移校正和跨 segment 单元匹配仍待实现。
+
+**固定 K 后处理：** `components` 仍是每个局部 GMM 的 K；使用独立的 `target_units`，在跨邻域事件去重后合并局部簇：
+
+```python
+sorting = vanillasort.sort(
+    recording, components=10, target_units=10, neighborhood_mode="cover",
+    postprocessing={"on_shortfall": "return_available"},
+    output_folder="output/fixed-k", device="auto",
+)
+```
+
+独立 util 为 `vanillasort.postprocessing.postprocess_fixed_k(data, config)`。`data` 包含 `samples`、`labels`、`scores` 和形状为 `(N, 72, C)` 的归一化 `waves`；recording API 自动提取所有物理通道上的共同波形。后处理选择可靠主簇、合并兼容片段，并在每个输出 unit 内去重，不重新训练全局 GMM。默认沿用已测试的 coherence/cosine 参数，拟合不读取 GT。
+
+可靠主簇不足时默认抛出 `InsufficientAnchorsError`，其 `.audit` 包含原因和可用数量。设置 `on_shortfall="return_available"` 可返回实际非空簇数（包括 0），并标记 `exact_k=False`。只有显式设置 `anchor_policy="supplement"` 才允许弱簇/重复模板簇补齐，并标记 `status="degraded"`；实际簇不足时仍不能创造缺失的 unit。退化模板和输入噪声标签 `-1` 被排除，非法输入会明确报错，支持 K=1。多 segment 情况下 K 是**每个 segment 的目标数量**，不代表跨 segment 匹配了同一批神经元。
+
+结果和诊断保存在 `postprocessing_segment*.npz/json`、`run.json`，也可通过 `sorting.get_annotation("fixed_k_postprocessing")` 获取。严格模式失败时先保存诊断 JSON 再抛异常。新参数属于直接调用 `vanillasort.sort()` 的 API；通过 SpikeInterface `run_sorter()` 传参需要 wrapper 另外暴露这些参数。
 
 **内存：** 每次以最多 300,000 个采样点为一块读取一个四通道邻域。精确滤波和中位数/MAD 归一化需要完整 segment 驻留内存，运行前会检查可用内存。波形存储随事件数增长；CUDA 显存不足时会缩小推理批次并重试。
 
-**耗时与进度（0.2.0 起）：** 每个邻域都会运行完整的检测流程，因此耗时同时随邻域数和记录时长增长。默认的 64 通道双列合成探针会生成 62 个邻域。`verbose=True` 显示所选设备、邻域数量，并在批次完成后约每五秒更新一次检测和 embedding 进度。各邻域的阶段耗时写入 `run.json` 的 `runs[].timings_seconds`。更新后的 SpikeInterface wrapper 将进度同时输出到终端和 `sorter_output/vanillasort.log`；`spikeinterface_log.json` 在运行结束后写入。
+**耗时与进度（0.2.0 起）：** 每个选中的邻域都会运行完整的检测流程，因此耗时同时随邻域数和记录时长增长。64 通道双列合成探针在原 dense 模式下会生成 62 个邻域，cover 模式仅保留覆盖全部通道所需的子集。`verbose=True` 显示所选设备、邻域数量，并在批次完成后约每五秒更新一次检测和 embedding 进度。各邻域的阶段耗时写入 `run.json` 的 `runs[].timings_seconds`。更新后的 SpikeInterface wrapper 将进度同时输出到终端并保留日志；`spikeinterface_log.json` 在运行结束后写入。
 
 较长序列的 rotary detector 推理采用局部注意力分块，保留原有感受野和 checkpoint。CPU API 分选最多使用八个 PyTorch 线程，遵守调用者设置的更低上限，并在结束后恢复原设置。同一次分选中，CUDA 显存不足后缩小的批次会沿用到后续邻域。较大探针仍可能需要较长时间；GPU 利用率本身无法说明当前运行到了哪一步。安装 VanillaSort 与更新后的 SpikeInterface wrapper 后，可用[复现脚本](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/examples/reproduce_si_4832.py)运行固定输入 seed 的 64 通道、60 秒示例，并复用记录缓存。
 
@@ -252,6 +306,11 @@ sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components
 | --- | --- | --- |
 | `--components K` | 处理自己的数据时必填 | GMM 组分数。 |
 | `--profile d1` | `d1` | 选择 `d1` 或 `canonical` 预处理配置。 |
+| `--gate` / `--no-gate` | `--gate` | 启用/关闭内置事件 SNR 门控；检测分数阈值始终生效。 |
+| `--threshold VALUE` | 模型 profile | [0, 1] 内的最低 detector 分数。 |
+| `--direct-keep VALUE` | 模型 profile | 绕过内置 SNR 检查的分数阈值。 |
+| `--primary-snr VALUE`、`--secondary-snr VALUE` | 模型配置（3、2） | 非负的事件 SNR 下限。 |
+| `--min-secondary-channels N` | 模型配置（1） | 满足次通道 SNR 的额外通道数，1–3。 |
 | `--seed 30` | `30` | 本次运行及单次 GMM 初始化的随机种子。 |
 | `--device auto` | `auto` | 使用 `auto`、`cpu`、`cuda` 或 `cuda:0` 等设备。 |
 | `--seconds 10` | 完整记录 | 处理前 10 秒，指定时长应在记录范围内。 |
@@ -273,6 +332,8 @@ sorting = vanillasort.sort(recording, model_path="/path/to/model.pt", components
 | 波形来源 | 滤波后的电压 | 滤波后按通道进行中位数/MAD 归一化的电压 |
 
 两种配置都会对检测器输入按通道进行中位数/MAD 归一化。事件信噪比筛选使用 canonical 的 200–6,000 Hz 信号。使用 `--seconds` 处理前缀时，归一化和聚类也在该前缀上拟合。请将 `run.json` 与结果一起保存，以记录这些选择。
+
+例如，`vanillasort --input recording.npz --components 10 --no-gate --threshold 0.139 --output output/no-gate` 可关闭 SNR 门控。自定义函数只通过 Python API 传入。
 
 ## 模型架构
 

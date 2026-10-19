@@ -5,14 +5,21 @@ from __future__ import annotations
 import numpy as np
 
 
-def local_neighborhoods(recording):
-    """Return unique nearest-four patches and their owning channel indices.
+def local_neighborhoods(recording, mode="dense"):
+    """Return nearest-four patches and their uniquely owned channel indices.
 
     Groups and probe/shank boundaries are respected. Channels inside a patch
     retain recording order because the published convolution is order-sensitive.
     The detector has no missing-channel mask: fewer than four real contacts in
     a group is an error, rather than an unsupported artificial electrode.
+
+    "cover" greedily chooses the patch covering the most still-uncovered
+    contacts (stable ties in recording order). Every contact occurs in a patch
+    and owns exactly one selected patch; it need not itself be a patch center.
+    "dense" retains the original unique nearest-four patch for every center.
     """
+    if mode not in ("cover", "dense"):
+        raise ValueError("neighborhood_mode must be 'cover' or 'dense'")
     if recording.has_probe() and recording.is_probe_3d():
         raise ValueError("The published checkpoints require 2D geometry; select an explicit 2D projection first")
     locations = np.asarray(recording.get_channel_locations(), dtype=np.float32)
@@ -45,7 +52,23 @@ def local_neighborhoods(recording):
             nearest = indices[np.argsort(distance, kind="stable")[:4]]
             patch = tuple(sorted(nearest.tolist()))
             patches.setdefault(patch, []).append(int(center))
-    return locations, [(np.asarray(patch), np.asarray(owners)) for patch, owners in patches.items()]
+    if mode == "dense":
+        return locations, [(np.asarray(patch), np.asarray(owners)) for patch, owners in patches.items()]
+    # Work on candidate channel sets, not one detector pass per center. Use
+    # newly covered contacts as owners, so overlapping patches do not both
+    # claim the same primary channel and no covered contact loses ownership.
+    candidates = list(patches)
+    channel_sets = [set(patch) for patch in candidates]
+    uncovered = set(range(count))
+    selected = []
+    while uncovered:
+        best = max(range(len(candidates)), key=lambda i: len(channel_sets[i] & uncovered))
+        owners = channel_sets[best] & uncovered
+        if not owners:
+            raise RuntimeError("Nearest-four patches failed to cover all recording channels")
+        selected.append((np.asarray(candidates[best], dtype=np.int64), np.asarray(sorted(owners), dtype=np.int64)))
+        uncovered.difference_update(owners)
+    return locations, selected
 
 
 def deduplicate_events(samples, scores, patch_indices, patches, radius):

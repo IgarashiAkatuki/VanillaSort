@@ -62,6 +62,18 @@ def main():
     parser.add_argument("--components", type=int, help="Explicit GMM K; Hybrid rec11/12:22, others:24")
     parser.add_argument("--seed", type=int, default=30, help="One fixed historical restart; never GT-selected")
     parser.add_argument("--profile", choices=["d1", "canonical"], default="d1")
+    parser.add_argument(
+        "--gate",
+        dest="enable_gate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable SNR gating (default); --no-gate keeps score thresholding and peak/NMS selection",
+    )
+    parser.add_argument("--threshold", type=float, help="Minimum detector sigmoid score in [0,1]; profile default")
+    parser.add_argument("--direct-keep", type=float, help="Score bypassing built-in SNR checks; profile default")
+    parser.add_argument("--primary-snr", type=float, help="Strongest-channel SNR minimum; model default")
+    parser.add_argument("--secondary-snr", type=float, help="Additional-channel SNR minimum; model default")
+    parser.add_argument("--min-secondary-channels", type=int, help="Additional channel count, 1 to 3; model default")
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda or cuda:0")
     parser.add_argument("--detector-batch", type=int, default=8)
     parser.add_argument("--embedding-batch", type=int, default=128)
@@ -123,6 +135,12 @@ def main():
         args.detector_batch,
         args.embedding_batch,
         args.detect_only,
+        enable_gate=args.enable_gate,
+        threshold=args.threshold,
+        direct_keep=args.direct_keep,
+        primary_snr=args.primary_snr,
+        secondary_snr=args.secondary_snr,
+        min_secondary_channels=args.min_secondary_channels,
     )
     audit.update(
         elapsed_seconds=time.perf_counter() - started,

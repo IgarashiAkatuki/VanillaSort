@@ -88,17 +88,50 @@ def test_empty_segments_and_validation(recording, tiny_model, tmp_path):
         vanillasort.sort(bad)
 
 
-def test_geometry_and_overlap(recording, tiny_model):
+def test_geometry_and_overlap(recording, tiny_model, monkeypatch):
+    from vanillasort import pipeline
+
     traces = recording.get_traces(segment_index=0)
     extended = NumpyRecording(
-        [np.column_stack([traces, traces[:, :2]])], 30000, channel_ids=["a", "b", "c", "d", "e", "f"]
+        [np.column_stack([traces, traces])], 30000, channel_ids=["a", "b", "c", "d", "e", "f", "g", "h"]
     )
     # Interleaved channel order: nearest neighbors must come from coordinates.
-    extended.set_dummy_probe_from_locations(np.array([[0, 0], [0, 100], [0, 20], [0, 80], [0, 40], [0, 60]]))
-    _, patches = local_neighborhoods(extended)
+    extended.set_dummy_probe_from_locations(
+        np.array([[0, 0], [0, 140], [0, 20], [0, 120], [0, 40], [0, 60], [0, 80], [0, 100]])
+    )
+    _, patches = local_neighborhoods(extended, mode="cover")
     assert patches[0][0].tolist() == [0, 2, 4, 5]
-    assert len(patches) > 1
-    sorting = vanillasort.sort(extended, model_path=tiny_model, components=2, device="cpu", verbose=False)
+    assert len(patches) == 2
+    _, dense = local_neighborhoods(extended, mode="dense")
+    assert len(dense) > len(patches)
+    calls = []
+    gate_contexts = []
+    original = pipeline.infer_candidates
+
+    def counted_inference(*args, **kwargs):
+        calls.append(len(args[1]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "infer_candidates", counted_inference)
+
+    def keep_all(context):
+        gate_contexts.append(context)
+        return np.ones(len(context.samples), dtype=bool)
+
+    sorting = vanillasort.sort(
+        extended,
+        model_path=tiny_model,
+        components=2,
+        neighborhood_mode="cover",
+        device="cpu",
+        verbose=False,
+        gate_fn=keep_all,
+    )
+    assert calls == [len(traces)] * len(patches)
+    for patch, context in zip(patches, gate_contexts):
+        np.testing.assert_array_equal(context.channel_ids, extended.channel_ids[patch[0]])
+        np.testing.assert_array_equal(context.channel_locations, extended.get_channel_locations()[patch[0]])
+    assert [context.neighborhood_index for context in gate_contexts] == list(range(len(patches)))
     assert sorting.get_num_units() > 0
     assert np.isin(sorting.get_property("main_channel_id"), extended.channel_ids).all()
     # Overlap suppresses duplicate events, but separate tetrodes keep simultaneity.

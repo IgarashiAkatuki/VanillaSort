@@ -20,6 +20,7 @@ import torch
 
 from . import ops
 from .checkpoints import load_detector, load_huidurep
+from .gating import resolve_gate, select_candidates
 
 
 class _Progress:
@@ -297,12 +298,38 @@ def run_pipeline(
     detect_only=False,
     verbose=True,
     owner_channels=None,
+    *,
+    enable_gate=True,
+    threshold=None,
+    gate_fn=None,
+    direct_keep=None,
+    primary_snr=None,
+    secondary_snr=None,
+    min_secondary_channels=None,
+    channel_ids=None,
+    segment_index=0,
+    neighborhood_index=0,
 ):
     started = time.perf_counter()
     timings = {}
     validate_input(raw, coords, fs)
+    gate_settings = resolve_gate(
+        config,
+        profile,
+        enable_gate=enable_gate,
+        threshold=threshold,
+        gate_fn=gate_fn,
+        direct_keep=direct_keep,
+        primary_snr=primary_snr,
+        secondary_snr=secondary_snr,
+        min_secondary_channels=min_secondary_channels,
+    )
     raw = np.asarray(raw, dtype=np.float32)
     coords = np.asarray(coords, dtype=np.float32)
+    channel_locations = coords
+    channel_ids = np.arange(4) if channel_ids is None else np.asarray(channel_ids)
+    if channel_ids.shape != (4,):
+        raise ValueError("channel_ids must contain four IDs in input channel order")
     coords = np.ascontiguousarray(coords - coords.mean(axis=0, keepdims=True))
     p = config["profiles"][profile]
     if verbose:
@@ -325,29 +352,35 @@ def run_pipeline(
     gc.collect()
     if device.type == "cuda":
         torch.cuda.empty_cache()
+    stage_started = time.perf_counter()
     snrs = ops.estimate_candidate_event_snrs_by_channel(
         canonical, times, np.ones(4, np.float32), config["event_snr_radius"]
     )
-    pred, rejected = ops.filter_scored_predictions_with_ranked_event_snr_gate(
+    positions, gate_audit = select_candidates(
         times,
         values,
         snrs,
-        p["base_threshold"],
-        p["direct_keep"],
-        config["primary_snr"],
-        config["secondary_snr"],
-        config["min_secondary_channels"],
+        gate_settings,
+        gate_fn,
+        fs_hz=float(fs),
+        channel_ids=channel_ids,
+        channel_locations=channel_locations,
+        segment_index=segment_index,
+        neighborhood_index=neighborhood_index,
+        profile=profile,
+        event_snr_radius=config["event_snr_radius"],
     )
-    positions = np.searchsorted(times, pred)
     # For overlapping probe neighborhoods, each physical channel owns one patch.
     # The four-channel path keeps every accepted detection, exactly as published.
     ownership_removed = 0
     if owner_channels is not None and len(positions):
         owned = np.isin(np.argmax(snrs[positions], axis=1), owner_channels)
         ownership_removed = int((~owned).sum())
-        pred, positions = pred[owned], positions[owned]
+        positions = positions[owned]
+    pred = times[positions]
     scores = values[positions]
     selected_snrs = snrs[positions]
+    timings["gating"] = time.perf_counter() - stage_started
     arrays = dict(detection_samples=pred, detection_scores=scores, detection_snrs=selected_snrs)
     audit = dict(
         profile=profile,
@@ -355,7 +388,8 @@ def run_pipeline(
         fs_hz=fs,
         candidate_peaks=len(times),
         detector_events=len(pred),
-        gate_rejected=rejected,
+        gate_rejected=gate_audit["rejected_events"],
+        gating=gate_audit,
         detector=det_audit,
         detector_normalization=detector_norm,
         gate_normalization=gate_norm,

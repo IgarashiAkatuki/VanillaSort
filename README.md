@@ -91,21 +91,75 @@ The result is a SpikeInterface `BaseSorting`. Spike trains use zero-based sample
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `components` | `22` | GMM component count K; choose K ≥ 2 for your recording. |
+| `target_units` | `None` | Optional fixed-K merging of local clusters, per segment. |
+| `postprocessing` | `None` | Fixed-K policies and thresholds; see below. |
+| `neighborhood_mode` | `"dense"` | Original patch selection; opt into `"cover"` to cover all contacts with fewer detector passes. |
 | `output_folder` | `None` | Keep results in memory, or save to a new/empty directory. |
 | `device` | `"auto"` | CUDA when available, otherwise CPU; also accepts `"cpu"` or `"cuda:0"`. |
 | `seed` | `0` | Reproducible initialization; the CLI default is `30`. |
 | `profile` | `"d1"` | Select `"d1"` or `"canonical"` preprocessing. |
+| `enable_gate` | `True` | Enable built-in SNR gating, or a supplied custom gate. |
+| `threshold` | `None` | Minimum detector score; None uses the model profile (d1: 0.039). |
+| `gate_fn` | `None` | Custom `gate_fn(context)` returning a boolean keep mask; replaces the built-in gate. |
+| `direct_keep` | `None` | Built-in gate's direct-acceptance score; model profile default (d1: 0.045). |
+| `primary_snr`, `secondary_snr` | `None`, `None` | Built-in event-SNR minima; model defaults (3, 2). |
+| `min_secondary_channels` | `None` | Required additional channels, 1–3; model default (1). |
 | `model`, `model_path` | `"default"`, `None` | Use the pretrained model or a local checkpoint. |
 | `detector_batch`, `embedding_batch` | `8`, `128` | Inference batch sizes. |
 | `verbose` | `True` | Print progress. |
 
 K applies to each neighborhood and segment. A nonempty neighborhood needs at least K sortable events; empty detections produce an empty sorting.
 
-**Larger probes:** the experimental adapter builds nearest-four neighborhoods, respects group/shank boundaries, and suppresses overlapping detections within 12 samples. Segments receive independent unit IDs. Drift correction and unit matching across neighborhoods or segments remain future work; drifting units may split and nearby simultaneous events may be suppressed.
+**Detection thresholds and gates:** after peak selection and refractory NMS, events must have `score >= threshold`. With the built-in gate enabled, events with `score >= direct_keep` pass directly; the remaining events require the strongest-channel SNR to meet `primary_snr` and at least `min_secondary_channels` other channels to meet `secondary_snr`. These are per-event negative-peak SNR estimates on the canonical filtered/MAD-normalized signal, not ground-truth unit SNRs. `threshold` is a sigmoid score in [0, 1], not a voltage threshold. `None` preserves the loaded model's defaults.
+
+Disable SNR gating while retaining a score threshold, for example:
+
+```python
+sorting = vanillasort.sort(recording, components=10, threshold=0.139, enable_gate=False)
+```
+
+`threshold` and `direct_keep` are independent: raising `threshold` above `direct_keep` makes every eligible event bypass the built-in SNR gate. To keep testing SNR at higher scores, also raise `direct_keep`, for example `threshold=0.139, direct_keep=0.2`. These are example settings, not new defaults.
+
+A custom gate replaces the built-in SNR rule, including its direct-acceptance bypass:
+
+```python
+import numpy as np
+
+def my_gate(events):
+    ranked = np.sort(events.snrs, axis=1)
+    return (events.scores >= 0.2) | ((ranked[:, -1] >= 3) & (ranked[:, -2] >= 2))
+
+sorting = vanillasort.sort(
+    recording, components=10, threshold=0.139,
+    enable_gate=True, gate_fn=my_gate,
+)
+```
+
+The callback receives a `vanillasort.gating.GateContext` once per segment/neighborhood with nonempty threshold-passing candidates. Its read-only CPU arrays are `samples` (N,), `scores` (N,), `snrs` (N, 4), `channel_ids` (4,), and `channel_locations` (4, 2). Samples are relative to the segment start; columns follow the supplied channel order. Metadata includes `fs_hz`, `segment_index`, `neighborhood_index`, `profile`, and `event_snr_radius` (samples). The return must be a boolean array or list of length N; integers, wrong shapes and callback errors stop the run. Empty input skips the callback. Functions, closures and callable objects are supported; `enable_gate=False` together with `gate_fn` is an error.
+
+Neither gate mode changes subsequent main-channel ownership checks, cross-neighborhood deduplication, or waveform-boundary checks. Custom gates can reject candidates but cannot restore events removed by earlier threshold/peak/NMS selection. The resolved settings are stored in `run.json` under `gating` and in `sorting.get_annotation("detection_gate")`; per-neighborhood `runs[].gating` counts are measured before ownership. `config` remains the unmodified model configuration. Only the callback's name is saved, so retain its code and any captured parameters to reproduce a custom run. These new options currently require direct `vanillasort.sort()` calls; a SpikeInterface `run_sorter()` wrapper must expose them separately.
+
+**Larger probes:** by default the experimental adapter keeps the original nearest-four neighborhoods and ownership (`"dense"`). Opt into `neighborhood_mode="cover"` to select a deterministic covering subset, respecting group/shank boundaries. Every contact remains an input and owns exactly one selected patch; not every contact needs to be a patch center. This reduces repeated full-record detector passes. Remaining overlapping detections are still suppressed within 12 samples. A sparser set changes detector contexts and can reduce accuracy; it is therefore explicit rather than the default. Segments receive independent unit IDs. Drift correction and cross-segment unit matching remain future work.
+
+**Fixed-K postprocessing:** `components` remains the local GMM size. Set `target_units` separately to merge local clusters after cross-patch event deduplication:
+
+```python
+sorting = vanillasort.sort(
+    recording, components=10, target_units=10, neighborhood_mode="cover",
+    postprocessing={"on_shortfall": "return_available"},
+    output_folder="output/fixed-k", device="auto",
+)
+```
+
+The independent utility is `vanillasort.postprocessing.postprocess_fixed_k(data, config)`, where `data` contains `samples`, `labels`, `scores`, and normalized `waves` of shape `(N, 72, C)`. The recording API constructs these common-channel waveforms automatically. It ranks reliable local anchors, merges compatible fragments, and deduplicates events within each output unit. It does not fit a global GMM. Defaults preserve the tested coherence/cosine settings; fitting does not consult ground truth.
+
+By default, insufficient reliable anchors raise `InsufficientAnchorsError` with an `.audit` diagnostic. `on_shortfall="return_available"` returns the available nonempty units, including zero, and records `exact_k=False`. `anchor_policy="supplement"` explicitly permits observed weak/duplicate clusters and records `status="degraded"`; it cannot create missing units. Degenerate templates and input noise label `-1` are excluded. Invalid inputs are rejected; K=1 is supported. For multi-segment recordings, the target is **per segment** and output unit identities remain separate.
+
+Results and diagnostics are saved as `postprocessing_segment*.npz/json`, included in `run.json`, and available through `sorting.get_annotation("fixed_k_postprocessing")`. On strict failure the JSON diagnostic is saved before raising. These options belong to the direct `vanillasort.sort()` API; a SpikeInterface wrapper must expose them before they can be forwarded through `run_sorter()`.
 
 **Memory:** traces are read in blocks of at most 300,000 samples for one four-channel neighborhood at a time. Exact filtering and median/MAD normalization require a complete segment in RAM, with an initial memory check. Waveform storage grows with the event count. CUDA memory errors trigger retries with smaller inference batches.
 
-**Runtime and progress (since 0.2.0):** each neighborhood runs a complete detector pass, so runtime grows with the number of neighborhoods as well as recording duration. The standard 64-channel, two-column synthetic probe produces 62 neighborhoods. `verbose=True` reports the selected device, neighborhood count, and detection/embedding progress approximately every five seconds (after a batch completes). Per-neighborhood stage timings are saved in `run.json` under `runs[].timings_seconds`. The updated SpikeInterface wrapper echoes progress to the terminal and retains it in `sorter_output/vanillasort.log`; `spikeinterface_log.json` is finalized after sorting ends.
+**Runtime and progress (since 0.2.0):** each selected neighborhood runs a complete detector pass, so runtime grows with the neighborhood count and recording duration. The original dense mode produces 62 neighborhoods for the standard 64-channel, two-column synthetic probe; cover mode selects only a covering subset. `verbose=True` reports the selected device, neighborhood count, and detection/embedding progress approximately every five seconds (after a batch completes). Per-neighborhood stage timings are saved in `run.json` under `runs[].timings_seconds`. The updated SpikeInterface wrapper echoes progress to the terminal and retains its log; `spikeinterface_log.json` is finalized after sorting ends.
 
 Long rotary-detector inference uses local attention tiles with the original receptive field and checkpoints. CPU API sorting uses up to eight PyTorch threads, respecting a smaller caller limit and restoring that limit afterward. CUDA batch reductions carry over to later neighborhoods in the same sort. Larger probes can still take substantial time; GPU utilization alone does not show which stage is running. With VanillaSort and the updated SpikeInterface wrapper installed, [this reproduction script](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/examples/reproduce_si_4832.py) runs the 64-channel, 60-second example using a fixed input seed and reusable recording cache.
 
@@ -253,6 +307,11 @@ Common command-line options:
 | `--components K` | Required for sorting your data | Number of GMM components. |
 | `--model-path PATH` | Hugging Face default model | Use a local checkpoint bundle or directory. |
 | `--profile d1` | `d1` | Select `d1` or `canonical` preprocessing. |
+| `--gate` / `--no-gate` | `--gate` | Enable/disable built-in event-SNR gating; the score threshold still applies. |
+| `--threshold VALUE` | Model profile | Minimum detector score in [0, 1]. |
+| `--direct-keep VALUE` | Model profile | Score that bypasses the built-in SNR check. |
+| `--primary-snr VALUE`, `--secondary-snr VALUE` | Model config (3, 2) | Nonnegative event-SNR minima. |
+| `--min-secondary-channels N` | Model config (1) | Additional channels meeting secondary SNR, from 1 to 3. |
 | `--seed 30` | `30` | Random seed for the run and its single GMM initialization. |
 | `--device auto` | `auto` | Select `auto`, `cpu`, `cuda`, or a device such as `cuda:0`. |
 | `--seconds 10` | Entire recording | Process the first 10 seconds; the value must fit within the recording. |
@@ -274,6 +333,8 @@ The profiles and model settings are defined in [`configs/default.json`](https://
 | Waveform source | Filtered voltage | Filtered voltage with per-channel median/MAD normalization |
 
 Both profiles use per-channel median/MAD normalization for detector input. Event-SNR gating uses the canonical 200–6,000 Hz signal. Processing a prefix with `--seconds` also fits normalization and clustering to that prefix. Keep `run.json` with your results to record these choices.
+
+For example, `vanillasort --input recording.npz --components 10 --no-gate --threshold 0.139 --output output/no-gate` disables the SNR gate. Custom functions are supported through the Python API only.
 
 ## Model architecture
 
