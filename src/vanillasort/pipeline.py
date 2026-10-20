@@ -50,8 +50,8 @@ def validate_input(raw, coords, fs_hz):
         raise ValueError("Expected at least 100 raw samples with shape [time,4]")
     if not np.isfinite(raw).all() or np.shape(coords) != (4, 2) or not np.isfinite(coords).all():
         raise ValueError("Input/coordinates must be finite; coords shape is [4,2]")
-    if not np.isclose(fs_hz, 30000.0, rtol=0, atol=1.0):
-        raise ValueError("This frozen model expects approximately 30 kHz; no silent resampling is performed")
+    if not np.isfinite(fs_hz) or fs_hz <= 0:
+        raise ValueError("Sampling frequency must be finite and positive")
 
 
 def filtered_signal(raw, fs, config):

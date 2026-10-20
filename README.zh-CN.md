@@ -6,7 +6,7 @@
 
 VanillaSort 结合 **VanillaDet** 尖峰检测、**HuiduRep** 波形表征与 **VanillaCluster** 聚类。通过 Python API 或 `vanillasort` 命令处理细胞外记录，获得尖峰时间和候选神经元单元归属。
 
-预训练流程处理 **30 kHz 采样的四通道记录**。SpikeInterface API 还为较大的二维探针提供实验性的四近邻适配。`main` 分支在统一的 `src/vanillasort/` 结构中维护可安装的 package、论文实现与开发工具。
+预训练流程处理 **多通道记录**。SpikeInterface API 还为较大的二维探针提供实验性的四近邻适配。`main` 分支在统一的 `src/vanillasort/` 结构中维护可安装的 package、论文实现与开发工具。
 
 **📄 论文：** Zishuo Feng 与 Feng Cao，[*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552)，bioRxiv，2026。**使用 VanillaSort 必须引用该论文。** [BibTeX](#引用)
 
@@ -62,6 +62,8 @@ vanillasort --self-test --device cpu --output output/self-test
 
 ## Python API
 
+使用 `run_sorter("vanillasort", ...)` 时，请参阅 [SpikeInterface 集成指南（英文）](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/spikeinterface.md)，其中包含全部 17 个 wrapper 参数、示例和集成测试说明。需要使用包含新版 wrapper 的 SpikeInterface；仅升级 VanillaSort 不会更新 wrapper。
+
 将带有通道坐标的 SpikeInterface `BaseRecording` 传入 `vanillasort.sort()`：
 
 ```python
@@ -86,7 +88,7 @@ restored = load("output/recording/sorting")
 
 返回值是 SpikeInterface `BaseSorting`。尖峰序列使用各 segment 内从 0 开始的采样点索引；`main_channel_id` 记录每个单元对应的主要记录通道。
 
-**输入要求：** 原始记录采样率为 30,000 Hz（容差 ±1 Hz），每个 segment 至少 100 个采样点，通道坐标为以微米表示的有限二维坐标。每个通道组或 shank 至少包含四个触点。有通道 gain/offset 时会自动换算，否则各通道使用共同电压尺度。程序内部完成滤波。
+**输入要求：** 原始记录每个 segment 至少 100 个采样点，通道坐标为以微米表示的有限二维坐标。每个通道组或 shank 至少包含四个触点。有通道 gain/offset 时会自动换算，否则各通道使用共同电压尺度。程序内部完成滤波。
 
 | 参数 | 默认值 | 用途 |
 | --- | --- | --- |
@@ -137,7 +139,7 @@ sorting = vanillasort.sort(
 
 回调输入为 `vanillasort.gating.GateContext`，每个 segment/邻域在存在通过 threshold 的候选时调用一次。只读 CPU 数组包括 `samples` (N,)、`scores` (N,)、`snrs` (N, 4)、`channel_ids` (4,) 和 `channel_locations` (4, 2)。时间是相对当前 segment 起点的采样点编号；通道顺序保持一致。另有 `fs_hz`、`segment_index`、`neighborhood_index`、`profile`、`event_snr_radius`（采样点数）等信息。返回值必须是长度 N 的布尔数组或列表，True 表示保留；整数掩码、形状错误及回调异常都会中止运行。没有候选时跳过回调。支持普通函数、闭包和可调用对象；同时设置 `enable_gate=False` 与 `gate_fn` 会报错。
 
-门控之后仍会执行主通道归属筛选、跨邻域去重和波形边界检查。自定义门控只能筛除候选，不能恢复已被 threshold、峰值选择或 NMS 排除的事件。实际参数保存在 `run.json` 的 `gating` 和 `sorting.get_annotation("detection_gate")` 中；`runs[].gating` 记录各邻域在归属筛选之前的计数。`config` 保留原始模型配置。日志只记录回调名称，复现实验时请另行保留函数代码及闭包参数。这些新参数用于直接调用 `vanillasort.sort()`，SpikeInterface 的 `run_sorter()` wrapper 需要另行暴露参数才能转发。
+门控之后仍会执行主通道归属筛选、跨邻域去重和波形边界检查。自定义门控只能筛除候选，不能恢复已被 threshold、峰值选择或 NMS 排除的事件。实际参数保存在 `run.json` 的 `gating` 和 `sorting.get_annotation("detection_gate")` 中；`runs[].gating` 记录各邻域在归属筛选之前的计数。`config` 保留原始模型配置。日志只记录回调名称，复现实验时请另行保留函数代码及闭包参数。更新后的 SpikeInterface wrapper 接受所有可序列化的门控参数；自定义 `gate_fn` 回调使用直接 Python API。
 
 **较大探针：** 默认保留原始密集四近邻及其归属（`"dense"`）。显式设置 `neighborhood_mode="cover"`，可确定性地选取覆盖全部通道的邻域子集，遵守 group/shank 边界。每个通道都作为实际输入，并且只归属一个所选邻域，不要求每个通道都当邻域中心，从而减少整段数据的重复 detector 推理。剩余重叠检测仍在 12 个采样点范围内去重。稀疏覆盖改变了 detector 的通道上下文，实测可能降低精度，因此保留为可选模式。各 segment 的单元 ID 独立，漂移校正和跨 segment 单元匹配仍待实现。
 
@@ -155,7 +157,7 @@ sorting = vanillasort.sort(
 
 可靠主簇不足时默认抛出 `InsufficientAnchorsError`，其 `.audit` 包含原因和可用数量。设置 `on_shortfall="return_available"` 可返回实际非空簇数（包括 0），并标记 `exact_k=False`。只有显式设置 `anchor_policy="supplement"` 才允许弱簇/重复模板簇补齐，并标记 `status="degraded"`；实际簇不足时仍不能创造缺失的 unit。退化模板和输入噪声标签 `-1` 被排除，非法输入会明确报错，支持 K=1。多 segment 情况下 K 是**每个 segment 的目标数量**，不代表跨 segment 匹配了同一批神经元。
 
-结果和诊断保存在 `postprocessing_segment*.npz/json`、`run.json`，也可通过 `sorting.get_annotation("fixed_k_postprocessing")` 获取。严格模式失败时先保存诊断 JSON 再抛异常。新参数属于直接调用 `vanillasort.sort()` 的 API；通过 SpikeInterface `run_sorter()` 传参需要 wrapper 另外暴露这些参数。
+结果和诊断保存在 `postprocessing_segment*.npz/json`、`run.json`，也可通过 `sorting.get_annotation("fixed_k_postprocessing")` 获取。严格模式失败时先保存诊断 JSON 再抛异常。更新后的 SpikeInterface wrapper 可通过 `run_sorter()` 接受 `target_units`、`neighborhood_mode` 和 `postprocessing` 字典。
 
 **内存：** 每次以最多 300,000 个采样点为一块读取一个四通道邻域。精确滤波和中位数/MAD 归一化需要完整 segment 驻留内存，运行前会检查可用内存。波形存储随事件数增长；CUDA 显存不足时会缩小推理批次并重试。
 
@@ -173,7 +175,7 @@ sorting = vanillasort.sort(
 | --- | --- | --- |
 | `traces` | `(T, 4)` | 原始电压采样值，第一维为时间，建议使用 `float32`。 |
 | `coords` | `(4, 2)` | 通道物理坐标，单位为微米，顺序与 `traces` 的通道顺序一致。 |
-| `fs_hz` | 标量 | 采样频率，单位为 Hz，设为 `30000.0`。 |
+| `fs_hz` | 标量 | 记录的实际采样频率，单位为 Hz；省略时默认为 `30000.0`。 |
 
 数组中的数值应为有限值，记录至少包含 100 个时间采样点，各通道使用一致的电压尺度。程序会完成滤波和归一化。通道数更多的探针可使用 Python API，或导出一个四通道组及其对应坐标供 CLI 使用。
 

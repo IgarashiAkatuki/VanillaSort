@@ -1,6 +1,6 @@
 """Utilities for validated fixed-K merging of local spike clusters.
 
-One segment, 30 kHz, with normalized 72-sample waveforms on all channels.
+One segment with normalized 72-sample waveforms on all channels.
 Label -1 denotes input noise. Only events with output['keep'] are emitted.
 The default raises on insufficient distinct reliable anchors. Set
 on_shortfall='return_available' to return fewer units, or explicitly opt into
@@ -216,7 +216,7 @@ def _data(data):
     elif scores.dtype.itemsize < 4:
         scores = scores.astype(np.float32)
     d["scores"] = scores
-    
+
     waves = d["waves"]
     if waves.ndim != 3 or waves.shape[0] != n or waves.shape[1] != 72 or waves.shape[2] < 1:
         raise ValueError("waves must have shape (number_of_events, 72, number_of_channels >= 1)")

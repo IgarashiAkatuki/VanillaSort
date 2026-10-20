@@ -62,6 +62,8 @@ For your recordings, `--device auto` selects CUDA when available and CPU otherwi
 
 ## Python API
 
+For `run_sorter("vanillasort", ...)`, see the [SpikeInterface integration guide](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/spikeinterface.md) for all 17 wrapper parameters, examples, and integration tests. Use a SpikeInterface version containing the updated wrapper; upgrading VanillaSort alone does not update it.
+
 Pass a SpikeInterface `BaseRecording` with channel locations to `vanillasort.sort()`:
 
 ```python
@@ -86,7 +88,7 @@ restored = load("output/recording/sorting")
 
 The result is a SpikeInterface `BaseSorting`. Spike trains use zero-based sample indices within each segment; `main_channel_id` identifies each unit's main recording channel.
 
-**Input:** raw recordings at least 100 samples per segment, and finite 2D channel locations in micrometres. Each channel group or shank must contain at least four contacts. Channel gains and offsets are applied when present; traces otherwise need a common voltage scale. Filtering is internal.
+**Input:** raw recordings with at least 100 samples per segment, and finite 2D channel locations in micrometres. Each channel group or shank must contain at least four contacts. Channel gains and offsets are applied when present; traces otherwise need a common voltage scale. Filtering is internal.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -137,7 +139,7 @@ sorting = vanillasort.sort(
 
 The callback receives a `vanillasort.gating.GateContext` once per segment/neighborhood with nonempty threshold-passing candidates. Its read-only CPU arrays are `samples` (N,), `scores` (N,), `snrs` (N, 4), `channel_ids` (4,), and `channel_locations` (4, 2). Samples are relative to the segment start; columns follow the supplied channel order. Metadata includes `fs_hz`, `segment_index`, `neighborhood_index`, `profile`, and `event_snr_radius` (samples). The return must be a boolean array or list of length N; integers, wrong shapes and callback errors stop the run. Empty input skips the callback. Functions, closures and callable objects are supported; `enable_gate=False` together with `gate_fn` is an error.
 
-Neither gate mode changes subsequent main-channel ownership checks, cross-neighborhood deduplication, or waveform-boundary checks. Custom gates can reject candidates but cannot restore events removed by earlier threshold/peak/NMS selection. The resolved settings are stored in `run.json` under `gating` and in `sorting.get_annotation("detection_gate")`; per-neighborhood `runs[].gating` counts are measured before ownership. `config` remains the unmodified model configuration. Only the callback's name is saved, so retain its code and any captured parameters to reproduce a custom run. These new options currently require direct `vanillasort.sort()` calls; a SpikeInterface `run_sorter()` wrapper must expose them separately.
+Neither gate mode changes subsequent main-channel ownership checks, cross-neighborhood deduplication, or waveform-boundary checks. Custom gates can reject candidates but cannot restore events removed by earlier threshold/peak/NMS selection. The resolved settings are stored in `run.json` under `gating` and in `sorting.get_annotation("detection_gate")`; per-neighborhood `runs[].gating` counts are measured before ownership. `config` remains the unmodified model configuration. Only the callback's name is saved, so retain its code and any captured parameters to reproduce a custom run. The updated SpikeInterface wrapper accepts all serializable gate options; custom `gate_fn` callbacks use the direct Python API.
 
 **Larger probes:** by default the experimental adapter keeps the original nearest-four neighborhoods and ownership (`"dense"`). Opt into `neighborhood_mode="cover"` to select a deterministic covering subset, respecting group/shank boundaries. Every contact remains an input and owns exactly one selected patch; not every contact needs to be a patch center. This reduces repeated full-record detector passes. Remaining overlapping detections are still suppressed within 12 samples. A sparser set changes detector contexts and can reduce accuracy; it is therefore explicit rather than the default. Segments receive independent unit IDs. Drift correction and cross-segment unit matching remain future work.
 
@@ -155,7 +157,7 @@ The independent utility is `vanillasort.postprocessing.postprocess_fixed_k(data,
 
 By default, insufficient reliable anchors raise `InsufficientAnchorsError` with an `.audit` diagnostic. `on_shortfall="return_available"` returns the available nonempty units, including zero, and records `exact_k=False`. `anchor_policy="supplement"` explicitly permits observed weak/duplicate clusters and records `status="degraded"`; it cannot create missing units. Degenerate templates and input noise label `-1` are excluded. Invalid inputs are rejected; K=1 is supported. For multi-segment recordings, the target is **per segment** and output unit identities remain separate.
 
-Results and diagnostics are saved as `postprocessing_segment*.npz/json`, included in `run.json`, and available through `sorting.get_annotation("fixed_k_postprocessing")`. On strict failure the JSON diagnostic is saved before raising. These options belong to the direct `vanillasort.sort()` API; a SpikeInterface wrapper must expose them before they can be forwarded through `run_sorter()`.
+Results and diagnostics are saved as `postprocessing_segment*.npz/json`, included in `run.json`, and available through `sorting.get_annotation("fixed_k_postprocessing")`. On strict failure the JSON diagnostic is saved before raising. The updated SpikeInterface wrapper accepts `target_units`, `neighborhood_mode`, and the `postprocessing` dictionary through `run_sorter()`.
 
 **Memory:** traces are read in blocks of at most 300,000 samples for one four-channel neighborhood at a time. Exact filtering and median/MAD normalization require a complete segment in RAM, with an initial memory check. Waveform storage grows with the event count. CUDA memory errors trigger retries with smaller inference batches.
 
@@ -173,7 +175,7 @@ Save a NumPy `.npz` archive containing:
 | --- | --- | --- |
 | `traces` | `(T, 4)` | Raw voltage samples, with time along the first axis. `float32` is recommended. |
 | `coords` | `(4, 2)` | Physical channel coordinates in micrometres, in the same channel order as `traces`. |
-| `fs_hz` | Scalar | Sampling frequency in Hz; use `30000.0`. |
+| `fs_hz` | Scalar | Actual recording sampling frequency in Hz; defaults to `30000.0` when omitted. |
 
 Use finite values, at least 100 time samples, and a common voltage scale across channels. Filtering and normalization are applied by the pipeline. Use the Python API for larger probes, or export a four-channel group and its matching coordinates for the CLI.
 

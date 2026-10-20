@@ -33,14 +33,15 @@ def sort(
     target_units=None,
     postprocessing=None,
 ) -> BaseSorting:
-    """Sort a raw 30 kHz recording and return a SpikeInterface BaseSorting.
+    """Sort a raw multichannel recording and return a SpikeInterface BaseSorting.
 
     Parameters
     ----------
     recording : spikeinterface.core.BaseRecording
         Raw traces on a common voltage scale, with finite 2D channel locations
         in micrometres. Each group/shank must contain at least four channels.
-        Larger groups use experimental nearest-four neighborhoods.
+        Larger groups use experimental nearest-four neighborhoods. The input
+        sampling frequency is preserved; no resampling is performed.
     output_folder : str or Path, optional
         New/empty folder for sorting/, events.npz, per-patch results and run.json.
         If omitted, the returned sorting is held in memory; no files are written.
@@ -125,8 +126,8 @@ def sort(
     if not isinstance(recording, BaseRecording):
         raise TypeError("recording must be a SpikeInterface BaseRecording")
     fs = recording.get_sampling_frequency()
-    if not np.isclose(fs, 30000.0, rtol=0, atol=1.0):
-        raise ValueError("The published VanillaSort checkpoints require approximately 30 kHz; resample explicitly")
+    if not np.isfinite(fs) or fs <= 0:
+        raise ValueError("Sampling frequency must be finite and positive")
     for name, value, lower in (
         ("components", components, 2),
         ("detector_batch", detector_batch, 1),

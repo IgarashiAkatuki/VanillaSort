@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Preserve the input recording's sampling frequency instead of rejecting rates
+  other than 30 kHz. Filtering uses that frequency, with no implicit resampling;
+  sample indices and the saved sorting retain the original clock.
+- Maintain the [SpikeInterface parameter guide](docs/spikeinterface.md) and
+  wrapper-specific regression tests in this repository. SpikeInterface retains
+  its common sorter suite and links to this guide.
+
 ## 0.2.1 — 2026-10-19
 
 Release the detector-gating and fixed-K postprocessing changes from

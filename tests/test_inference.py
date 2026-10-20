@@ -23,7 +23,15 @@ def test_import():
     )
 
 
-def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys):
+@pytest.mark.parametrize("sampling_frequency", [20000, 25000, 30000])
+def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys, sampling_frequency):
+    locations = recording.get_channel_locations()
+    recording = NumpyRecording(
+        [recording.get_traces(segment_index=i) for i in range(recording.get_num_segments())],
+        sampling_frequency,
+        channel_ids=recording.channel_ids,
+    )
+    recording.set_dummy_probe_from_locations(locations)
     rng_before = torch.get_rng_state().clone()
     threads = torch.get_num_threads()
     folder = tmp_path / "result"
@@ -32,7 +40,7 @@ def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys):
     )
     assert isinstance(sorting, BaseSorting)
     assert sorting.get_num_segments() == 2
-    assert sorting.get_sampling_frequency() == 30000
+    assert sorting.get_sampling_frequency() == sampling_frequency
     spikes = sorting.to_spike_vector()
     assert spikes.size > 0
     assert spikes["sample_index"].dtype.kind in "iu"
@@ -47,6 +55,7 @@ def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys):
         spikes[spikes["segment_index"] == 1]["unit_index"]
     )
     restored = load(folder / "sorting")
+    assert restored.get_sampling_frequency() == sampling_frequency
     np.testing.assert_array_equal(restored.to_spike_vector(), spikes)
     np.testing.assert_array_equal(restored.get_property("main_channel_id"), sorting.get_property("main_channel_id"))
     with np.load(folder / "events.npz") as events:
@@ -54,6 +63,7 @@ def test_sort_roundtrip(recording, tiny_model, tmp_path, capsys):
         np.testing.assert_array_equal(events["unit_id"], sorting.unit_ids[spikes["unit_index"]])
         np.testing.assert_array_equal(events["segment_index"], spikes["segment_index"])
     metadata = json.loads((folder / "run.json").read_text())
+    assert metadata["sampling_frequency"] == sampling_frequency
     assert metadata["model"]["sha256"]["detector_checkpoint"]
     assert metadata["runs"][0]["clustering"]["eligible_events"] > 0
     again = vanillasort.sort(recording, model_path=tiny_model, components=2, device="cpu", verbose=False)
@@ -76,9 +86,15 @@ def test_empty_segments_and_validation(recording, tiny_model, tmp_path):
     assert sorting.get_num_units() == 0
     assert sorting.get_num_segments() == 2
     assert load(tmp_path / "empty/sorting").get_num_segments() == 2
-    bad = NumpyRecording([np.zeros((200, 4), dtype="float32")], 20000)
-    with pytest.raises(ValueError, match="30 kHz"):
-        vanillasort.sort(bad)
+    from vanillasort.pipeline import validate_input
+
+    for sampling_frequency in (0, -1, float("nan"), float("inf")):
+        raw = np.zeros((200, 4), dtype="float32")
+        bad = NumpyRecording([raw], sampling_frequency)
+        with pytest.raises(ValueError, match="Sampling frequency must be finite and positive"):
+            vanillasort.sort(bad)
+        with pytest.raises(ValueError, match="Sampling frequency must be finite and positive"):
+            validate_input(raw, recording.get_channel_locations(), sampling_frequency)
     with pytest.raises(ValueError, match="components"):
         vanillasort.sort(recording, components=0)
     with pytest.raises(ValueError, match="fewer than K"):
@@ -93,7 +109,7 @@ def test_geometry_and_overlap(recording, tiny_model, monkeypatch):
 
     traces = recording.get_traces(segment_index=0)
     extended = NumpyRecording(
-        [np.column_stack([traces, traces])], 30000, channel_ids=["a", "b", "c", "d", "e", "f", "g", "h"]
+        [np.column_stack([traces, traces])], 25000, channel_ids=["a", "b", "c", "d", "e", "f", "g", "h"]
     )
     # Interleaved channel order: nearest neighbors must come from coordinates.
     extended.set_dummy_probe_from_locations(
@@ -133,6 +149,7 @@ def test_geometry_and_overlap(recording, tiny_model, monkeypatch):
         np.testing.assert_array_equal(context.channel_locations, extended.get_channel_locations()[patch[0]])
     assert [context.neighborhood_index for context in gate_contexts] == list(range(len(patches)))
     assert sorting.get_num_units() > 0
+    assert sorting.get_sampling_frequency() == 25000
     assert np.isin(sorting.get_property("main_channel_id"), extended.channel_ids).all()
     # Overlap suppresses duplicate events, but separate tetrodes keep simultaneity.
     patches = [(np.arange(4), None), (np.arange(2, 6), None), (np.arange(6, 10), None)]
