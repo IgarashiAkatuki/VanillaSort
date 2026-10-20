@@ -396,7 +396,7 @@ The tests use small synthetic recordings and locally generated model weights. Nu
 
 Extend VanillaDet in `src/vanillasort/models/detector.py`, HuiduRep in `src/vanillasort/models/huidurep/`, and inference experiments in `src/vanillasort/pipeline.py` and `src/vanillasort/configs/default.json`. Use checkpoints that match the model architecture. Run the synthetic quick start after changes and keep each experiment's `run.json` with its outputs.
 
-See the [0.2.1 release notes](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/CHANGELOG.md) for configurable gating, fixed-K postprocessing, and optional cover neighborhoods. The [runtime measurements](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/performance-pr4832.md) document the local-attention optimization introduced in 0.2.0 and its numerical checks.
+See the [0.2.2 release notes](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/CHANGELOG.md) for input sampling-rate support and the relocated SpikeInterface guide and tests. The changelog also covers configurable gating, fixed-K postprocessing, and optional cover neighborhoods introduced in 0.2.1. The [runtime measurements](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/performance-pr4832.md) document the local-attention optimization introduced in 0.2.0 and its numerical checks.
 
 Maintainers can follow the [release process](https://github.com/IgarashiAkatuki/VanillaSort/blob/main/docs/releasing.md) to publish a version through GitHub Actions.
 

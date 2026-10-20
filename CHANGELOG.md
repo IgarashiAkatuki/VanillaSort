@@ -1,13 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 — 2026-10-20
+
+### Changed
 
 - Preserve the input recording's sampling frequency instead of rejecting rates
   other than 30 kHz. Filtering uses that frequency, with no implicit resampling;
   sample indices and the saved sorting retain the original clock.
 - Maintain the [SpikeInterface parameter guide](docs/spikeinterface.md) and
   wrapper-specific regression tests in this repository. SpikeInterface retains
-  its common sorter suite and links to this guide.
+  its common sorter suite and links to this guide. Document all 17 serializable
+  wrapper parameters, fixed-K policies, and direct Python gate callbacks.
+- Align the English and Chinese READMEs with multichannel input and link the
+  integration guide from both.
+
+### Compatibility
+
+Existing 30 kHz calls retain their preprocessing, model weights, and defaults.
+Input sampling frequencies must be finite and positive, and the filter cutoffs
+must fit below the Nyquist frequency. Waveform windows and refractory distances
+remain measured in samples. Custom `gate_fn` callbacks still require the direct
+Python API; serializable controls use the updated SpikeInterface wrapper.
+
+### Validation
+
+The package and wrapper integration suite passes all 21 tests, including
+20/25/30 kHz result round trips and 25 kHz multichannel input. With the public
+SpikeInterface distribution, 18 package tests pass and the optional wrapper
+module skips when that wrapper is unavailable. The installed wheel passes the
+same checks. Wheel and source distribution metadata pass `twine check --strict`;
+the source distribution includes the relocated guide and tests, and neither
+archive contains pretrained weights. The pinned-model CPU self-test produces
+447 accepted detections and 446 sorted events.
 
 ## 0.2.1 — 2026-10-19
 

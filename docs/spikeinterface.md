@@ -2,7 +2,7 @@
 
 VanillaSort accepts a SpikeInterface recording and returns a
 `spikeinterface.core.BaseSorting`. This page describes the VanillaSort
-API on `main` and the parameters exposed by the current SpikeInterface wrapper.
+0.2.2 API and the parameters exposed by the current SpikeInterface wrapper.
 The wrapper requires VanillaSort >= 0.2.1; upgrade with
 `pip install --upgrade vanillasort` and use a SpikeInterface version containing
 the updated wrapper ([SpikeInterface PR #4832](https://github.com/SpikeInterface/spikeinterface/pull/4832)).
@@ -43,11 +43,11 @@ Filtering and normalization run inside VanillaSort. The recording's sampling
 frequency and sample indices are preserved; no resampling is performed. The
 selected filter's upper cutoff must be below the recording's Nyquist frequency.
 
-Support for sampling rates other than 30 kHz is currently on `main`; PyPI 0.2.1
-still enforces the earlier rate check. To use the current implementation:
+Support for sampling rates other than 30 kHz is available from VanillaSort 0.2.2.
+Upgrade the package to use it:
 
 ```bash
-python -m pip install "git+https://github.com/IgarashiAkatuki/VanillaSort.git@main"
+python -m pip install --upgrade "vanillasort>=0.2.2"
 ```
 
 ## Model and inference parameters
@@ -222,7 +222,7 @@ create missing units. Noise labels and degenerate templates are excluded.
 | `max_amplitude_ratio` | `1.5` | Finite value at least 1, bounding the fragment/anchor amplitude ratio in either direction. |
 | `min_margin` | `0.03` | Finite, nonnegative minimum difference between the second-best and best anchor distances. This criterion does not apply when there is one anchor. |
 
-These defaults describe version 0.2.1. Changing them affects anchor selection,
+These defaults describe version 0.2.2. Changing them affects anchor selection,
 fragment acceptance, and quality; choose settings using the recording's needs.
 The independent array utility `vanillasort.postprocessing.postprocess_fixed_k`
 also exists. The recording API prepares its common-channel waveforms automatically.

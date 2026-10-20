@@ -22,6 +22,6 @@ python -m pip install --force-reinstall --no-deps dist/*.whl
 pytest -q
 ```
 
-Commit the release changes on `main` and push a matching version tag, such as `v0.2.1`. The [publishing workflow](../.github/workflows/publish.yml) checks the tag, builds the wheel and source distribution, tests the installed wheel, and publishes through PyPI Trusted Publishing. Create a GitHub release for the tag using the corresponding changelog entry.
+Commit the release changes on `main` and push a matching version tag, such as `v0.2.2`. The [publishing workflow](../.github/workflows/publish.yml) checks the tag, builds the wheel and source distribution, tests the installed wheel, and publishes through PyPI Trusted Publishing. Create a GitHub release for the tag using the corresponding changelog entry.
 
 After the workflow succeeds, verify the new version on [PyPI](https://pypi.org/project/vanillasort/) and install it in a fresh environment. Pretrained weights are downloaded from the immutable Hugging Face revision in `src/vanillasort/configs/default_model.json` on first inference.
