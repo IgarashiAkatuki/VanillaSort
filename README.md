@@ -6,7 +6,7 @@
 
 VanillaSort combines **VanillaDet** spike detection, **HuiduRep** waveform representations, and **VanillaCluster** clustering. Sort extracellular recordings through a Python API or the `vanillasort` command and obtain spike times and putative neuronal-unit assignments.
 
-The pretrained pipeline processes **four-channel recordings at 30 kHz**. The SpikeInterface API also provides an experimental nearest-four-neighbor adapter for larger 2D probes. The `main` branch contains the installable package, research implementation, and development tools in a shared `src/vanillasort/` layout.
+The pretrained pipeline processes **multi-channel recordings**. The SpikeInterface API also provides an experimental nearest-four-neighbor adapter for larger 2D probes. The `main` branch contains the installable package, research implementation, and development tools in a shared `src/vanillasort/` layout.
 
 **📄 Paper:** Zishuo Feng and Feng Cao, [*Spike Sorting with VanillaSort*](https://www.biorxiv.org/content/10.64898/2026.09.18.752552), bioRxiv, 2026. **You must cite this paper when using VanillaSort.** [BibTeX](#citation)
 
@@ -86,7 +86,7 @@ restored = load("output/recording/sorting")
 
 The result is a SpikeInterface `BaseSorting`. Spike trains use zero-based sample indices within each segment; `main_channel_id` identifies each unit's main recording channel.
 
-**Input:** raw recordings at 30,000 Hz (tolerance ±1 Hz), at least 100 samples per segment, and finite 2D channel locations in micrometres. Each channel group or shank must contain at least four contacts. Channel gains and offsets are applied when present; traces otherwise need a common voltage scale. Filtering is internal.
+**Input:** raw recordings at least 100 samples per segment, and finite 2D channel locations in micrometres. Each channel group or shank must contain at least four contacts. Channel gains and offsets are applied when present; traces otherwise need a common voltage scale. Filtering is internal.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
